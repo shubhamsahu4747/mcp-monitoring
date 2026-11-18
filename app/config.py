@@ -8,10 +8,19 @@ exclusively for MCP JSON-RPC protocol messages.
 
 from __future__ import annotations
 
+import io
 import logging
 import sys
 from pathlib import Path
 from typing import List
+
+# Ensure stdio streams are valid under GUI / no-console environments (e.g. PyInstaller --noconsole)
+if sys.stdout is None:
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    sys.stderr = io.StringIO()
+if sys.stdin is None:
+    sys.stdin = io.StringIO()
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict

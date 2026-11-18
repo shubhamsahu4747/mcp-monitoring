@@ -11,7 +11,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import io
 import sys
+
+# Ensure stdio streams are valid under GUI / no-console environments (e.g. PyInstaller --noconsole)
+if sys.stdout is None:
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    sys.stderr = io.StringIO()
+if sys.stdin is None:
+    sys.stdin = io.StringIO()
 
 from app.config import configure_logging, settings
 
@@ -120,19 +129,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run_info() -> int:
     """Print configuration and verification info to stderr."""
-    sys.stderr.write("============================================================\n")
-    sys.stderr.write("   Walled AI - MCP Communication Monitoring & Security Gateway\n")
-    sys.stderr.write("============================================================\n")
-    sys.stderr.write(f"Python Version       : {sys.version.split()[0]}\n")
-    sys.stderr.write(f"Auth Timeout         : {settings.auth_timeout_seconds}s\n")
-    sys.stderr.write(f"Database Path        : {settings.db_path}\n")
-    sys.stderr.write(f"Upstream Server Name : {settings.upstream_server_name}\n")
     cmd_repr = f"{settings.default_upstream_command} {settings.default_upstream_args}"
-    sys.stderr.write(f"Upstream Command     : {cmd_repr}\n")
-    sys.stderr.write(f"Remote Gateway       : {settings.remote_host}:{settings.remote_port}\n")
-    sys.stderr.write(f"Redaction Keys Count : {len(settings.sensitive_keys_list)}\n")
-    sys.stderr.write("Environment Status   : VERIFIED (Milestone 2 Ready)\n")
-    sys.stderr.write("============================================================\n")
+    msg = (
+        "============================================================\n"
+        "   Walled AI - MCP Communication Monitoring & Security Gateway\n"
+        "============================================================\n"
+        f"Python Version       : {sys.version.split()[0]}\n"
+        f"Auth Timeout         : {settings.auth_timeout_seconds}s\n"
+        f"Database Path        : {settings.db_path}\n"
+        f"Upstream Server Name : {settings.upstream_server_name}\n"
+        f"Upstream Command     : {cmd_repr}\n"
+        f"Remote Gateway       : {settings.remote_host}:{settings.remote_port}\n"
+        f"Redaction Keys Count : {len(settings.sensitive_keys_list)}\n"
+        "Environment Status   : VERIFIED (Milestone 2 Ready)\n"
+        "============================================================\n"
+    )
+    if sys.stderr is not None:
+        try:
+            sys.stderr.write(msg)
+            sys.stderr.flush()
+        except Exception:
+            pass
     return 0
 
 
@@ -210,6 +227,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         uvicorn.run(remote_app, host=args.host, port=args.port, log_level=args.log_level.lower())
         return 0
+    elif args.command == "info":
+        return run_info()
+
+    # When launched with no arguments:
+    # If packaged as a standalone GUI executable (e.g. double-clicked in Windows Explorer),
+    # launch the PySide6 Desktop GUI application directly.
+    if getattr(sys, "frozen", False):
+        from app.desktop.application import run_desktop
+
+        return run_desktop()
 
     return run_info()
 
