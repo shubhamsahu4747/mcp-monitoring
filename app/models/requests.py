@@ -1,11 +1,12 @@
 """Domain models and state machine for authorization requests and audit records.
 
-Implements strict state transition enforcement, Pydantic validation,
+Implements strict state transition enforcement, Pydantic v2 validation,
 and sensitive data redaction.
 """
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -25,7 +26,7 @@ class AuthorizationStatus(StrEnum):
 
 
 # Terminal states from which no further transition is permitted
-TERMINAL_STATUSES = frozenset(
+TERMINAL_STATUSES: frozenset[AuthorizationStatus] = frozenset(
     {
         AuthorizationStatus.APPROVED,
         AuthorizationStatus.REJECTED,
@@ -47,6 +48,11 @@ VALID_TRANSITIONS: dict[AuthorizationStatus, set[AuthorizationStatus]] = {
     AuthorizationStatus.TIMED_OUT: set(),
     AuthorizationStatus.CANCELLED: set(),
 }
+
+# Regex pattern matching bearer tokens or private key blocks in string values
+_SENSITIVE_VALUE_REGEX = re.compile(
+    r"(?i)(bearer\s+[a-z0-9\-._~+/]+=*|-----BEGIN\s+[A-Z\s]+PRIVATE\s+KEY-----)",
+)
 
 
 class AuthorizationError(Exception):
@@ -83,35 +89,63 @@ def redact_sensitive_data(
         "secret_key",
     ),
 ) -> Any:
-    """Recursively redacts sensitive parameter values from dictionaries and lists.
+    """Recursively redacts sensitive parameter keys and values.
 
     Args:
-        data: The arbitrary Python structure (dict, list, primitive) to redact.
-        sensitive_keys: Case-insensitive substrings/keys to treat as sensitive.
+        data: Arbitrary Python structure (dict, list, tuple, set, primitive).
+        sensitive_keys: Substrings treated as sensitive when found in dictionary keys.
 
     Returns:
-        A deep copy of data with sensitive values masked by "[REDACTED]".
+        Deep copy of data with sensitive values masked with "[REDACTED]".
     """
+    normalized_keys = [k.strip().lower() for k in sensitive_keys if k.strip()]
+
     if isinstance(data, dict):
         redacted_dict: dict[str, Any] = {}
         for k, v in data.items():
             k_lower = str(k).lower()
-            if any(s.lower() in k_lower for s in sensitive_keys):
+            key_is_sensitive = any(s in k_lower for s in normalized_keys)
+
+            if isinstance(v, dict):
+                # Always recurse into sub-dictionaries to preserve structural schema
+                redacted_dict[k] = redact_sensitive_data(v, normalized_keys)
+            elif isinstance(v, (list, tuple, set)):
+                if key_is_sensitive and not any(
+                    isinstance(item, (dict, list, tuple, set)) for item in v
+                ):
+                    # Mask collections of primitive secrets (e.g. passwords: ["a", "b"])
+                    masked = ["[REDACTED]" for _ in v]
+                    redacted_dict[k] = type(v)(masked) if not isinstance(v, set) else set(masked)
+                else:
+                    redacted_dict[k] = redact_sensitive_data(v, normalized_keys)
+            elif key_is_sensitive:
+                redacted_dict[k] = "[REDACTED]"
+            elif isinstance(v, str) and _SENSITIVE_VALUE_REGEX.search(v):
                 redacted_dict[k] = "[REDACTED]"
             else:
-                redacted_dict[k] = redact_sensitive_data(v, sensitive_keys)
+                redacted_dict[k] = v
         return redacted_dict
+
     elif isinstance(data, list):
-        return [redact_sensitive_data(item, sensitive_keys) for item in data]
+        return [redact_sensitive_data(item, normalized_keys) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(redact_sensitive_data(item, normalized_keys) for item in data)
+    elif isinstance(data, set):
+        return {redact_sensitive_data(item, normalized_keys) for item in data}
+    elif isinstance(data, str) and _SENSITIVE_VALUE_REGEX.search(data):
+        return "[REDACTED]"
     return data
 
 
 class AuthorizationDecision(BaseModel):
     """A user or policy decision for a pending authorization request."""
 
-    request_id: str = Field(description="UUID of the authorization request.")
+    request_id: str = Field(
+        min_length=1,
+        description="UUID of the authorization request.",
+    )
     decision: AuthorizationStatus = Field(
-        description="Outcome decision: APPROVED or REJECTED."
+        description="Outcome decision: APPROVED or REJECTED.",
     )
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -125,10 +159,10 @@ class AuthorizationDecision(BaseModel):
     @field_validator("decision")
     @classmethod
     def validate_terminal_decision(cls, v: AuthorizationStatus) -> AuthorizationStatus:
-        """Ensure decision submitted by user is explicitly APPROVED or REJECTED."""
+        """Ensure decision submitted is explicitly APPROVED or REJECTED."""
         if v not in (AuthorizationStatus.APPROVED, AuthorizationStatus.REJECTED):
             raise ValueError(
-                f"User decision must be APPROVED or REJECTED, received {v}"
+                f"User decision must be APPROVED or REJECTED, received '{v}'"
             )
         return v
 
@@ -138,13 +172,16 @@ class AuthorizationRequest(BaseModel):
 
     request_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
+        min_length=1,
         description="Globally unique identifier for the request.",
     )
     server_name: str = Field(
-        description="Name of the MCP server hosting the intercepted tool."
+        min_length=1,
+        description="Name of the MCP server hosting the intercepted tool.",
     )
     tool_name: str = Field(
-        description="Name of the tool requested by the LLM client."
+        min_length=1,
+        description="Name of the tool requested by the LLM client.",
     )
     arguments: Dict[str, Any] = Field(
         default_factory=dict,
@@ -168,7 +205,7 @@ class AuthorizationRequest(BaseModel):
     )
 
     def is_terminal(self) -> bool:
-        """Check if request has reached a terminal state."""
+        """Check if request has reached an immutable terminal state."""
         return self.status in TERMINAL_STATUSES
 
     def can_transition_to(self, new_status: AuthorizationStatus) -> bool:
@@ -211,12 +248,59 @@ class AuthorizationRequest(BaseModel):
 class AuditRecord(BaseModel):
     """Immutable audit entry persisted to the SQLite database."""
 
-    request_id: str
-    server_name: str
-    tool_name: str
+    request_id: str = Field(min_length=1)
+    server_name: str = Field(min_length=1)
+    tool_name: str = Field(min_length=1)
     timestamp: datetime
     decision: AuthorizationStatus
     decision_timestamp: Optional[datetime] = None
     execution_outcome: Optional[str] = None
     failure_reason: Optional[str] = None
     arguments_redacted: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("decision")
+    @classmethod
+    def validate_decision_terminal(cls, v: AuthorizationStatus) -> AuthorizationStatus:
+        """Audit records must record a terminal authorization outcome."""
+        if v not in TERMINAL_STATUSES:
+            raise ValueError(
+                f"Audit record decision must be a terminal status, received '{v}'"
+            )
+        return v
+
+    @classmethod
+    def from_request(
+        cls,
+        request: AuthorizationRequest,
+        execution_outcome: Optional[str] = None,
+        failure_reason: Optional[str] = None,
+        sensitive_keys: Optional[Sequence[str]] = None,
+    ) -> AuditRecord:
+        """Construct a validated AuditRecord from a completed AuthorizationRequest.
+
+        Args:
+            request: The completed AuthorizationRequest.
+            execution_outcome: Optional execution summary (e.g. 'SUCCESS', 'TOOL_ERROR', 'BLOCKED').
+            failure_reason: Optional failure description.
+            sensitive_keys: Optional custom list of sensitive parameter keys.
+
+        Raises:
+            ValueError: If the request is not in a terminal status.
+        """
+        if not request.is_terminal():
+            raise ValueError(
+                f"Cannot create AuditRecord: request {request.request_id} "
+                f"is still in state {request.status.value}"
+            )
+
+        return cls(
+            request_id=request.request_id,
+            server_name=request.server_name,
+            tool_name=request.tool_name,
+            timestamp=request.created_at,
+            decision=request.status,
+            decision_timestamp=request.decision_at or datetime.now(timezone.utc),
+            execution_outcome=execution_outcome,
+            failure_reason=failure_reason or request.reason,
+            arguments_redacted=request.get_redacted_arguments(sensitive_keys),
+        )

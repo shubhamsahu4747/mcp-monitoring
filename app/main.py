@@ -113,9 +113,7 @@ def main(argv: list[str] | None = None) -> int:
 
     configure_logging(args.log_level)
 
-    if args.command == "info" or args.command is None:
-        return run_info()
-    elif args.command == "local-proxy":
+    if args.command == "local-proxy":
         sys.stderr.write("[INFO] Local MCP Proxy launching...\n")
         return 0
     elif args.command == "desktop":
@@ -125,8 +123,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write("[INFO] Remote Gateway launching...\n")
         return 0
 
-    return 0
+    return run_info()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())

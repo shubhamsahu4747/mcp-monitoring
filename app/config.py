@@ -2,6 +2,8 @@
 
 All settings are validated via Pydantic Settings and can be overridden
 via environment variables or an optional .env file.
+Diagnostics are strictly sent to sys.stderr to preserve sys.stdout
+exclusively for MCP JSON-RPC protocol messages.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application configuration schema."""
+    """Application configuration schema with strict bounds and environment overrides."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -27,6 +29,7 @@ class Settings(BaseSettings):
     # Authorization Engine
     auth_timeout_seconds: float = Field(
         default=30.0,
+        gt=0.0,
         description="Timeout in seconds before an unanswered authorization request fails closed.",
     )
     redact_keys: str = Field(
@@ -61,6 +64,8 @@ class Settings(BaseSettings):
     )
     remote_port: int = Field(
         default=8765,
+        ge=1,
+        le=65535,
         description="Port for the remote MCP gateway.",
     )
     agent_auth_token: str = Field(
@@ -76,13 +81,15 @@ class Settings(BaseSettings):
 
     @property
     def sensitive_keys_list(self) -> List[str]:
-        """Return list of lowercase sensitive parameter keys."""
-        return [k.strip().lower() for k in self.redact_keys.split(",") if k.strip()]
+        """Return normalized list of unique lowercase sensitive parameter keys."""
+        return sorted(list({k.strip().lower() for k in self.redact_keys.split(",") if k.strip()}))
 
     @property
     def db_path(self) -> Path:
-        """Resolved Path object for database file."""
-        return Path(self.database_path).resolve()
+        """Resolved Path object for database file, ensuring parent directory exists."""
+        resolved = Path(self.database_path).resolve()
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return resolved
 
 
 def configure_logging(level: str = "INFO") -> None:
@@ -104,6 +111,11 @@ def configure_logging(level: str = "INFO") -> None:
         root_logger.removeHandler(h)
     root_logger.addHandler(handler)
     root_logger.setLevel(numeric_level)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Convenience helper to retrieve named logger."""
+    return logging.getLogger(name)
 
 
 # Global settings singleton
