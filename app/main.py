@@ -10,6 +10,7 @@ Provides commands to start:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 
 from app.config import configure_logging, settings
@@ -101,7 +102,7 @@ def run_info() -> int:
     sys.stderr.write(f"Upstream Command     : {cmd_repr}\n")
     sys.stderr.write(f"Remote Gateway       : {settings.remote_host}:{settings.remote_port}\n")
     sys.stderr.write(f"Redaction Keys Count : {len(settings.sensitive_keys_list)}\n")
-    sys.stderr.write("Environment Status   : VERIFIED (Milestone 1 Ready)\n")
+    sys.stderr.write("Environment Status   : VERIFIED (Milestone 2 Ready)\n")
     sys.stderr.write("============================================================\n")
     return 0
 
@@ -114,7 +115,19 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(args.log_level)
 
     if args.command == "local-proxy":
-        sys.stderr.write("[INFO] Local MCP Proxy launching...\n")
+        from app.gateway.local_proxy import LocalMCPProxy
+        from app.gateway.upstream_manager import UpstreamManager
+
+        up_mgr = UpstreamManager(
+            command=args.upstream_cmd,
+            args=args.upstream_args,
+            server_name=args.server_name,
+        )
+        proxy = LocalMCPProxy(
+            upstream_mgr=up_mgr,
+            server_name=f"Walled AI Gateway ({args.server_name})",
+        )
+        asyncio.run(proxy.run())
         return 0
     elif args.command == "desktop":
         sys.stderr.write("[INFO] Desktop Agent launching...\n")
