@@ -8,6 +8,7 @@ Stdout is strictly preserved for JSON-RPC MCP messages.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -16,8 +17,10 @@ from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
 from app.config import configure_logging, settings
+from app.gateway.ipc_client import IPCAuthorizationClient
 from app.gateway.upstream_manager import UpstreamManager, upstream_manager
 from app.interception.request_interceptor import RequestInterceptor, request_interceptor
+from app.models.requests import AuthorizationRequest
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +33,22 @@ class LocalMCPProxy:
         upstream_mgr: UpstreamManager | None = None,
         interceptor: RequestInterceptor | None = None,
         server_name: str = "Walled AI MCP Security Gateway",
+        enable_desktop_ipc: bool = True,
     ) -> None:
         self.upstream_mgr = upstream_mgr or upstream_manager
         self.interceptor = interceptor or request_interceptor
         self.server_name = server_name
+        self.enable_desktop_ipc = enable_desktop_ipc
+
+        # IPC client communicating with running WalledAIDesktopApp
+        self.ipc_client: IPCAuthorizationClient | None = None
+        if self.enable_desktop_ipc and self.interceptor.auth_mgr._notification_hook is None:
+            self.ipc_client = IPCAuthorizationClient(
+                host=settings.remote_host,
+                port=settings.remote_port,
+                timeout_seconds=self.interceptor.auth_mgr.timeout_seconds,
+            )
+            self.interceptor.auth_mgr.set_notification_hook(self._ipc_notification_hook)
 
         # Create low-level official MCP server
         self.server = Server(
@@ -42,6 +57,21 @@ class LocalMCPProxy:
             on_list_tools=self._handle_list_tools,
             on_call_tool=self._handle_call_tool,
         )
+
+    async def _ipc_notification_hook(self, request: AuthorizationRequest) -> None:
+        """Forward intercepted tool call to running Desktop Agent over local IPC."""
+        if not self.ipc_client:
+            return
+
+        async def _forward_and_resolve() -> None:
+            try:
+                assert self.ipc_client is not None
+                decision = await self.ipc_client.request_authorization(request)
+                await self.interceptor.auth_mgr.submit_decision(decision)
+            except Exception as e:
+                logger.error("IPC forward error for request %s: %s", request.request_id, e)
+
+        asyncio.create_task(_forward_and_resolve())
 
     async def _handle_list_tools(
         self,
@@ -84,6 +114,12 @@ class LocalMCPProxy:
         )
 
         try:
+            # Connect upstream in root proxy task to preserve anyio task-scope invariants
+            try:
+                await self.upstream_mgr.ensure_connected()
+            except Exception as e:
+                logger.warning("Upstream pre-connection deferred: %s", e)
+
             async with stdio_server() as (read_stream, write_stream):
                 init_options = self.server.create_initialization_options()
                 await self.server.run(

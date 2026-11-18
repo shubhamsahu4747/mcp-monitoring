@@ -49,7 +49,8 @@ class UpstreamManager:
 
         raw_args = args if args is not None else settings.default_upstream_args
         if isinstance(raw_args, str):
-            self.args = shlex.split(raw_args)
+            tokens = shlex.split(raw_args, posix=(sys.platform != "win32"))
+            self.args = [t.strip("\"'") for t in tokens]
         else:
             self.args = list(raw_args)
 

@@ -86,6 +86,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Display gateway configuration and verify environment",
     )
 
+    # Mode: test-client
+    test_client_parser = subparsers.add_parser(
+        "test-client",
+        help="Run authentic MCP client session to test tool interception live",
+    )
+    test_client_parser.add_argument(
+        "--tool",
+        default="calculate_sum",
+        help="Tool to invoke (default: calculate_sum)",
+    )
+
+    # Mode: install-claude-config
+    subparsers.add_parser(
+        "install-claude-config",
+        help="Install or update Walled AI gateway entry in Claude Desktop configuration",
+    )
+
     return parser
 
 
@@ -133,6 +150,24 @@ def main(argv: list[str] | None = None) -> int:
         from app.desktop.application import run_desktop
 
         return run_desktop()
+    elif args.command == "test-client":
+        from app.gateway.interactive_client import run_client_demo
+
+        args_dict = (
+            {"a": 25.0, "b": 75.0}
+            if args.tool == "calculate_sum"
+            else {"filename": "test.txt", "content": "demo"}
+        )
+        asyncio.run(run_client_demo(tool_name=args.tool, arguments=args_dict))
+        return 0
+    elif args.command == "install-claude-config":
+        from app.gateway.claude_config import install_claude_config
+
+        path, snippet = install_claude_config()
+        sys.stderr.write(f"\n[CLAUDE DESKTOP CONFIGURATION]\nConfig File: {path}\n\n")
+        sys.stderr.write(f"{snippet}\n\n")
+        sys.stderr.write("To use in Claude Desktop: Restart Claude Desktop if already running.\n")
+        return 0
     elif args.command == "remote-gateway":
         sys.stderr.write("[INFO] Remote Gateway launching...\n")
         return 0

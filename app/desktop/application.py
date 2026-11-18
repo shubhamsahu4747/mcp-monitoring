@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import qasync  # type: ignore[import-untyped]
 from PySide6.QtWidgets import QApplication
 
 from app.authorization.manager import AuthorizationManager, authorization_manager
+from app.config import settings
 from app.desktop.authorization_popup import AuthorizationPopup
+from app.desktop.ipc_server import DesktopIPCServer
 from app.desktop.main_window import MainWindow
 from app.desktop.notifications import NotificationService
 from app.desktop.tray import SystemTrayManager
@@ -80,6 +82,52 @@ class WalledAIDesktopApp:
 
         # Hook authorization manager to desktop UI
         self.auth_mgr.set_notification_hook(self.on_authorization_request)
+
+        # Embedded IPC server for local MCP proxies (Claude Desktop integration)
+        self.ipc_server = DesktopIPCServer(
+            desktop_app=self,
+            host=settings.remote_host,
+            port=settings.remote_port,
+        )
+
+    async def request_authorization_via_gui(
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        timeout_seconds: float,
+    ) -> AuthorizationDecision:
+        """Present authorization request in desktop UI and wait for user decision."""
+        req = AuthorizationRequest(
+            server_name=server_name,
+            tool_name=tool_name,
+            arguments=arguments,
+        )
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[AuthorizationDecision] = loop.create_future()
+        await self.auth_mgr.registry.register(req, future)
+        await self.on_authorization_request(req)
+
+        try:
+            decision = await asyncio.wait_for(future, timeout=timeout_seconds)
+            return decision
+        except (asyncio.TimeoutError, TimeoutError):
+            await self.auth_mgr.registry.claim_timeout(
+                req.request_id,
+                reason=f"Authorization timed out after {timeout_seconds}s",
+            )
+            popup = self._active_popups.pop(req.request_id, None)
+            if popup:
+                popup.close()
+            self.main_window.remove_pending_request(req.request_id)
+            if self.tray_mgr:
+                self.tray_mgr.update_pending_count(self.auth_mgr.registry.count)
+            asyncio.create_task(self.refresh_audit_log())
+            return AuthorizationDecision(
+                request_id=req.request_id,
+                decision=AuthorizationStatus.TIMED_OUT,
+                reason=f"Authorization timed out after {timeout_seconds} seconds",
+            )
 
     async def _trigger_demo_request(self) -> None:
         """Trigger a safe demo tool authorization request for live UI testing."""
@@ -245,11 +293,16 @@ class WalledAIDesktopApp:
         if self.should_show_main_window:
             self.show_main_window()
 
+        # Start IPC server for local MCP proxies (Claude Desktop integration)
+        await self.ipc_server.start()
         logger.info("Walled AI Desktop Application started successfully.")
 
     async def shutdown(self, quit_qt_app: bool = True) -> None:
         """Gracefully shut down application, cancel pending requests, and close UI."""
         logger.info("Initiating Walled AI Desktop Application shutdown...")
+
+        # 0. Stop IPC server
+        await self.ipc_server.stop()
 
         # 1. Close all active popups
         for popup in list(self._active_popups.values()):
