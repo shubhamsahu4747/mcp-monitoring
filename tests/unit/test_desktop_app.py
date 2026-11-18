@@ -390,9 +390,9 @@ async def test_closing_popup_without_decision_fails_closed(
 
     await asyncio.sleep(0.05)
     assert future.done()
-    # Must fail closed as REJECTED
+    # Must fail closed as REJECTED with dismissal reason
     assert future.result().decision == AuthorizationStatus.REJECTED
-    assert "without explicit approval" in future.result().reason
+    assert "dismissed" in future.result().reason.lower()
 
 
 # -----------------------------------------------------------------------------

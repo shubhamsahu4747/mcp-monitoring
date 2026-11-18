@@ -103,6 +103,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Install or update Walled AI gateway entry in Claude Desktop configuration",
     )
 
+    # Mode: validate-claude-config
+    subparsers.add_parser(
+        "validate-claude-config",
+        help="Validate Claude Desktop configuration file and Walled AI gateway entry",
+    )
+
+    # Mode: rollback-claude-config
+    subparsers.add_parser(
+        "rollback-claude-config",
+        help="Restore Claude Desktop configuration from the latest backup",
+    )
+
     return parser
 
 
@@ -168,6 +180,25 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"{snippet}\n\n")
         sys.stderr.write("To use in Claude Desktop: Restart Claude Desktop if already running.\n")
         return 0
+    elif args.command == "validate-claude-config":
+        from app.gateway.claude_config import validate_claude_config
+
+        is_valid, messages = validate_claude_config()
+        sys.stderr.write("\n[CLAUDE DESKTOP CONFIGURATION VALIDATION]\n")
+        for msg in messages:
+            sys.stderr.write(f"  {msg}\n")
+        sys.stderr.write(
+            f"\nResult: {'VALID (Ready for Claude Desktop)' if is_valid else 'INVALID'}\n\n"
+        )
+        return 0 if is_valid else 1
+    elif args.command == "rollback-claude-config":
+        from app.gateway.claude_config import rollback_claude_config
+
+        success, msg = rollback_claude_config()
+        status_label = "SUCCESS" if success else "FAILED"
+        sys.stderr.write(f"\n[CLAUDE DESKTOP CONFIGURATION ROLLBACK - {status_label}]\n")
+        sys.stderr.write(f"  {msg}\n\n")
+        return 0 if success else 1
     elif args.command == "remote-gateway":
         sys.stderr.write("[INFO] Remote Gateway launching...\n")
         return 0

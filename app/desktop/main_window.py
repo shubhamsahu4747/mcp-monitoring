@@ -609,6 +609,8 @@ class MainWindow(QMainWindow):
                 outcome_item.setForeground(Qt.GlobalColor.darkGreen)
             elif outcome_category == "USER_REJECTED":
                 outcome_item.setForeground(Qt.GlobalColor.red)
+            elif outcome_category in ("USER_DISMISSED", "BLOCKED_USER_DISMISSED"):
+                outcome_item.setForeground(QColor("#EA580C"))
             elif outcome_category == "BLOCKED_AGENT_UNAVAILABLE":
                 outcome_item.setForeground(QColor("#D97706"))
             elif outcome_category == "BLOCKED_TIMEOUT":

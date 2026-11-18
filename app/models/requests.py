@@ -30,6 +30,8 @@ class AuditOutcome(StrEnum):
 
     USER_APPROVED = "USER_APPROVED"
     USER_REJECTED = "USER_REJECTED"
+    USER_DISMISSED = "USER_DISMISSED"
+    BLOCKED_USER_DISMISSED = "BLOCKED_USER_DISMISSED"
     BLOCKED_AGENT_UNAVAILABLE = "BLOCKED_AGENT_UNAVAILABLE"
     BLOCKED_TIMEOUT = "BLOCKED_TIMEOUT"
     BLOCKED_AUTHORIZATION_ERROR = "BLOCKED_AUTHORIZATION_ERROR"
@@ -311,6 +313,8 @@ class AuditRecord(BaseModel):
         if self.execution_outcome in (
             AuditOutcome.USER_APPROVED,
             AuditOutcome.USER_REJECTED,
+            AuditOutcome.USER_DISMISSED,
+            AuditOutcome.BLOCKED_USER_DISMISSED,
             AuditOutcome.BLOCKED_AGENT_UNAVAILABLE,
             AuditOutcome.BLOCKED_TIMEOUT,
             AuditOutcome.BLOCKED_AUTHORIZATION_ERROR,
@@ -324,6 +328,8 @@ class AuditRecord(BaseModel):
             return AuditOutcome.BLOCKED_TIMEOUT
         elif self.decision == AuthorizationStatus.REJECTED:
             reason_lower = (self.failure_reason or "").lower()
+            if "dismiss" in reason_lower or "closed" in reason_lower:
+                return AuditOutcome.USER_DISMISSED
             is_offline = "not running" in reason_lower or "unreachable" in reason_lower
             if "agent" in reason_lower and is_offline:
                 return AuditOutcome.BLOCKED_AGENT_UNAVAILABLE

@@ -118,6 +118,16 @@ class RequestInterceptor:
                     f"Walled AI Desktop Agent is unavailable ({reason})"
                 )
             elif (
+                "dismiss" in reason_lower
+                or "closed" in reason_lower
+                or "popup closed" in reason_lower
+            ):
+                outcome = AuditOutcome.USER_DISMISSED
+                error_msg = (
+                    f"Tool execution for '{clean_name}' was blocked: "
+                    f"Authorization dialog dismissed without user approval ({reason})"
+                )
+            elif (
                 "agent authentication failed" in reason_lower
                 or "http 401" in reason_lower
                 or "invalid agent token" in reason_lower

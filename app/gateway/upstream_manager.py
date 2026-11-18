@@ -11,6 +11,7 @@ import logging
 import shlex
 import sys
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import mcp.types as types
@@ -54,7 +55,11 @@ class UpstreamManager:
         else:
             self.args = list(raw_args)
 
-        self.env = env
+        default_env = {
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONPATH": str(Path.cwd().resolve()),
+        }
+        self.env = {**default_env, **(env or {})}
         self._lock = asyncio.Lock()
         self._exit_stack: Optional[AsyncExitStack] = None
         self._session: Optional[ClientSession] = None

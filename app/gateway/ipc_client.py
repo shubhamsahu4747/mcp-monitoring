@@ -83,8 +83,13 @@ class IPCAuthorizationClient:
             "timeout_seconds": self.timeout_seconds,
         }
 
-        # Client timeout gives a small 5-second buffer beyond auth timeout
-        client_timeout = self.timeout_seconds + 5.0
+        # Client timeout gives a buffer beyond auth timeout;
+        # connect timeout is bounded to fail-closed quickly if agent is offline
+        connect_timeout = min(1.0, max(0.2, self.timeout_seconds / 2.0))
+        timeout_config = httpx.Timeout(
+            timeout=self.timeout_seconds + 5.0,
+            connect=connect_timeout,
+        )
 
         try:
             logger.info(
@@ -93,7 +98,7 @@ class IPCAuthorizationClient:
                 request.tool_name,
                 self.base_url,
             )
-            async with httpx.AsyncClient(timeout=client_timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
                 response = await client.post(
                     f"{self.base_url}/api/authorize",
                     json=payload,

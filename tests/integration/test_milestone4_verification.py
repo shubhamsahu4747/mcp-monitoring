@@ -344,6 +344,14 @@ async def test_5_close_popup_fails_closed(
     assert result.is_error
     assert call_count == 0, f"Expected 0 upstream executions when popup closed, got {call_count}"
 
+    records = await verification_env["audit_repo"].list_records(limit=10)
+    assert len(records) == 1
+    assert records[0].decision == AuthorizationStatus.REJECTED
+    assert records[0].categorized_outcome in (
+        AuditOutcome.USER_DISMISSED,
+        AuditOutcome.BLOCKED_USER_DISMISSED,
+    )
+
 
 # -----------------------------------------------------------------------------
 # Check 6: Redaction in popup, audit DB, and logs

@@ -342,12 +342,12 @@ class AuthorizationPopup(QDialog):
             self.timer.stop()
             self._disable_action_buttons()
             logger.info(
-                "User closed popup for %s without decision. Failing closed.",
+                "User dismissed popup for %s without decision. Failing closed with USER_DISMISSED.",
                 self.request_id,
             )
             self.decision_made.emit(
                 self.request_id,
                 AuthorizationStatus.REJECTED,
-                "Popup closed by user without explicit approval",
+                "Authorization popup dismissed by user without decision",
             )
         super().closeEvent(event)
