@@ -1,7 +1,8 @@
-"""Request Interceptor enforcing authorization before upstream MCP execution."""
+"""Request Interceptor enforcing authorization and at-most-once upstream execution."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict
 
@@ -11,6 +12,7 @@ from app.authorization.manager import AuthorizationManager, authorization_manage
 from app.gateway.upstream_manager import UpstreamConnectionError, UpstreamManager, upstream_manager
 from app.interception.request_parser import RequestParser
 from app.models.requests import (
+    AlreadyDispatchedError,
     AuditRecord,
     AuthorizationCancelledError,
     AuthorizationStatus,
@@ -23,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class RequestInterceptor:
     """Intercepts MCP tool invocations, gates execution behind authorization,
-    and audits outcomes.
+    enforces at-most-once dispatch, and audits outcomes.
     """
 
     def __init__(
@@ -35,6 +37,17 @@ class RequestInterceptor:
         self.auth_mgr = auth_mgr or authorization_manager
         self.upstream_mgr = upstream_mgr or upstream_manager
         self.audit_repo = audit_repository or audit_repo
+
+    async def _safe_audit(self, record: AuditRecord) -> None:
+        """Safely attempt to persist an audit record without breaking fail-closed flow."""
+        try:
+            await self.audit_repo.record_audit(record)
+        except Exception as e:
+            logger.error(
+                "CRITICAL: Failed to write audit record %s to database: %s",
+                record.request_id,
+                e,
+            )
 
     async def intercept_call_tool(
         self,
@@ -92,13 +105,12 @@ class RequestInterceptor:
             reason = auth_request.reason or "Explicitly rejected by user"
             logger.info("Blocked tool execution for %s: %s", clean_name, reason)
 
-            # Record audit entry for rejection
             audit_record = AuditRecord.from_request(
                 auth_request,
                 execution_outcome="BLOCKED",
                 failure_reason=reason,
             )
-            await self.audit_repo.record_audit(audit_record)
+            await self._safe_audit(audit_record)
 
             return types.CallToolResult(
                 content=[
@@ -121,7 +133,7 @@ class RequestInterceptor:
                 execution_outcome="BLOCKED",
                 failure_reason=f"Status: {auth_request.status.value}",
             )
-            await self.audit_repo.record_audit(audit_record)
+            await self._safe_audit(audit_record)
             return types.CallToolResult(
                 content=[
                     types.TextContent(
@@ -132,7 +144,22 @@ class RequestInterceptor:
                 is_error=True,
             )
 
-        # 3. Approved: Forward to upstream MCP server preserving original arguments
+        # 3. Approved: Enforce at-most-once dispatch check
+        try:
+            auth_request.mark_dispatched()
+        except AlreadyDispatchedError as e:
+            logger.error("Blocked duplicate dispatch attempt for %s: %s", clean_name, e)
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=f"Duplicate execution blocked: request was already dispatched ({e})",
+                    )
+                ],
+                is_error=True,
+            )
+
+        # 4. Forward to upstream MCP server preserving original arguments
         logger.info(
             "Forwarding approved tool call '%s' (req_id=%s) upstream...",
             clean_name,
@@ -149,8 +176,18 @@ class RequestInterceptor:
                 execution_outcome=execution_outcome,
                 failure_reason=None if execution_outcome == "SUCCESS" else "Upstream tool error",
             )
-            await self.audit_repo.record_audit(audit_record)
+            await self._safe_audit(audit_record)
             return upstream_result
+
+        except asyncio.CancelledError:
+            logger.warning("Upstream call for '%s' was cancelled in flight", clean_name)
+            audit_record = AuditRecord.from_request(
+                auth_request,
+                execution_outcome="EXECUTION_UNKNOWN",
+                failure_reason="Client cancelled or gateway shut down during upstream execution",
+            )
+            await self._safe_audit(audit_record)
+            raise
 
         except UpstreamConnectionError as e:
             logger.error("Upstream execution failed for '%s': %s", clean_name, e)
@@ -159,12 +196,33 @@ class RequestInterceptor:
                 execution_outcome="UPSTREAM_FAILURE",
                 failure_reason=str(e),
             )
-            await self.audit_repo.record_audit(audit_record)
+            await self._safe_audit(audit_record)
             return types.CallToolResult(
                 content=[
                     types.TextContent(
                         type="text",
                         text=f"Upstream MCP server error executing '{clean_name}': {e}",
+                    )
+                ],
+                is_error=True,
+            )
+        except Exception as e:
+            logger.error(
+                "Unexpected exception during upstream execution of '%s': %s",
+                clean_name,
+                e,
+            )
+            audit_record = AuditRecord.from_request(
+                auth_request,
+                execution_outcome="EXECUTION_UNKNOWN",
+                failure_reason=f"Unexpected error: {e}",
+            )
+            await self._safe_audit(audit_record)
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=f"Unexpected execution error for '{clean_name}': {e}",
                     )
                 ],
                 is_error=True,

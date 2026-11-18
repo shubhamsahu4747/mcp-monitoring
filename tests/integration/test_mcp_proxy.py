@@ -24,7 +24,12 @@ from app.authorization.manager import AuthorizationManager
 from app.gateway.local_proxy import LocalMCPProxy
 from app.gateway.upstream_manager import UpstreamManager
 from app.interception.request_interceptor import RequestInterceptor
-from app.models.requests import AuthorizationDecision, AuthorizationRequest, AuthorizationStatus
+from app.models.requests import (
+    AuthorizationDecision,
+    AuthorizationRequest,
+    AuthorizationStatus,
+    DuplicateDecisionError,
+)
 from app.storage.audit_repository import AuditRepository
 from app.storage.database import DatabaseManager
 
@@ -290,7 +295,7 @@ async def test_6_duplicate_decisions_rejected(
     await task
 
     # Second decision attempt on same request must fail
-    with pytest.raises(KeyError):
+    with pytest.raises((DuplicateDecisionError, KeyError)):
         await auth_mgr.submit_decision(decision)
 
 

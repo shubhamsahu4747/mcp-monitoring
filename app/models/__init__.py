@@ -3,6 +3,7 @@
 from app.models.requests import (
     TERMINAL_STATUSES,
     VALID_TRANSITIONS,
+    AlreadyDispatchedError,
     AuditRecord,
     AuthorizationCancelledError,
     AuthorizationDecision,
@@ -16,6 +17,7 @@ from app.models.requests import (
 )
 
 __all__ = [
+    "AlreadyDispatchedError",
     "AuditRecord",
     "AuthorizationCancelledError",
     "AuthorizationDecision",

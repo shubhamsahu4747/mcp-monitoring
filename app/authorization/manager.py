@@ -1,4 +1,4 @@
-"""Authorization Manager coordinating pending requests, timeouts, and decisions."""
+"""Authorization Manager coordinating pending requests, timeouts, and atomic decisions."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from app.models.requests import (
     AuthorizationCancelledError,
     AuthorizationDecision,
     AuthorizationRequest,
-    AuthorizationStatus,
     AuthorizationTimeoutError,
 )
 from app.storage.audit_repository import AuditRepository, audit_repo
@@ -58,12 +57,11 @@ class AuthorizationManager:
             arguments: Original tool arguments dictionary.
 
         Returns:
-            The finalized AuthorizationRequest in an APPROVED state.
+            The finalized AuthorizationRequest in an APPROVED or REJECTED state.
 
         Raises:
             AuthorizationTimeoutError: If the user does not respond within timeout.
             AuthorizationCancelledError: If the request is cancelled or aborted.
-            AuthorizationError: If rejected by user or an error occurs.
         """
         request = AuthorizationRequest(
             server_name=server_name,
@@ -84,50 +82,54 @@ class AuthorizationManager:
 
         try:
             await asyncio.wait_for(future, timeout=self.timeout_seconds)
-            # Request status was already transitioned to APPROVED or REJECTED by DecisionProcessor
             return request
 
-        except asyncio.TimeoutError as e:
-            logger.warning(
-                "Authorization request %s timed out after %.1fs (tool=%s)",
+        except (asyncio.TimeoutError, TimeoutError) as e:
+            # Atomically claim timeout
+            timed_out_req = await self.registry.claim_timeout(
                 request.request_id,
-                self.timeout_seconds,
-                request.tool_name,
+                reason=f"Authorization timed out after {self.timeout_seconds} seconds",
             )
-            await self.registry.remove(request.request_id)
-            if not request.is_terminal():
-                request.transition_to(
-                    AuthorizationStatus.TIMED_OUT,
-                    reason=f"Authorization timed out after {self.timeout_seconds} seconds",
+            if timed_out_req is not None:
+                # Successfully claimed timeout: record audit and raise
+                audit_record = AuditRecord.from_request(
+                    timed_out_req,
+                    execution_outcome="TIMED_OUT",
+                    failure_reason=timed_out_req.reason,
                 )
-            audit_record = AuditRecord.from_request(
-                request,
-                execution_outcome="TIMED_OUT",
-                failure_reason=request.reason,
-            )
-            await self.audit_repo.record_audit(audit_record)
-            raise AuthorizationTimeoutError(
-                f"Authorization timed out for tool '{tool_name}'"
-            ) from e
+                try:
+                    await self.audit_repo.record_audit(audit_record)
+                except Exception as audit_err:
+                    logger.error("Failed to write timeout audit record: %s", audit_err)
+
+                raise AuthorizationTimeoutError(
+                    f"Authorization timed out for tool '{tool_name}'"
+                ) from e
+            else:
+                # Decision arrived concurrently and won the race
+                if request.is_terminal():
+                    return request
+                raise AuthorizationTimeoutError(
+                    f"Authorization timed out for tool '{tool_name}'"
+                ) from e
 
         except asyncio.CancelledError as e:
-            logger.warning(
-                "Authorization request %s was cancelled (tool=%s)",
+            # Atomically claim cancellation
+            cancelled_req = await self.registry.claim_cancellation(
                 request.request_id,
-                request.tool_name,
+                reason="Authorization request was cancelled",
             )
-            await self.registry.remove(request.request_id)
-            if not request.is_terminal():
-                request.transition_to(
-                    AuthorizationStatus.CANCELLED,
-                    reason="Authorization request was cancelled during shutdown",
+            if cancelled_req is not None:
+                audit_record = AuditRecord.from_request(
+                    cancelled_req,
+                    execution_outcome="CANCELLED",
+                    failure_reason=cancelled_req.reason,
                 )
-            audit_record = AuditRecord.from_request(
-                request,
-                execution_outcome="CANCELLED",
-                failure_reason=request.reason,
-            )
-            await self.audit_repo.record_audit(audit_record)
+                try:
+                    await self.audit_repo.record_audit(audit_record)
+                except Exception as audit_err:
+                    logger.error("Failed to write cancellation audit record: %s", audit_err)
+
             raise AuthorizationCancelledError(
                 f"Authorization request cancelled for tool '{tool_name}'"
             ) from e
@@ -139,7 +141,21 @@ class AuthorizationManager:
     async def shutdown(self) -> None:
         """Cancel all pending requests and clean up registry."""
         logger.info("Shutting down AuthorizationManager, cancelling pending requests...")
-        await self.registry.cancel_all(reason="Gateway shutdown")
+        cancelled_requests = await self.registry.cancel_all(reason="Gateway shutdown")
+        for req in cancelled_requests:
+            try:
+                audit_record = AuditRecord.from_request(
+                    req,
+                    execution_outcome="CANCELLED",
+                    failure_reason=req.reason,
+                )
+                await self.audit_repo.record_audit(audit_record)
+            except Exception as e:
+                logger.error(
+                    "Failed to persist shutdown audit record for %s: %s",
+                    req.request_id,
+                    e,
+                )
 
 
 # Default singleton instance

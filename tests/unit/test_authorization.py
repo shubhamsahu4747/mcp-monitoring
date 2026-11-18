@@ -15,6 +15,7 @@ from app.models.requests import (
     AuthorizationRequest,
     AuthorizationStatus,
     AuthorizationTimeoutError,
+    DuplicateDecisionError,
 )
 from app.storage.audit_repository import AuditRepository
 from app.storage.database import DatabaseManager
@@ -89,7 +90,7 @@ async def test_decision_processor_atomic_transitions() -> None:
     assert registry.count == 0
 
     # Test 6: Duplicate decision protection
-    with pytest.raises(KeyError):
+    with pytest.raises((DuplicateDecisionError, KeyError)):
         # Already removed from registry
         await processor.apply_decision(decision)
 

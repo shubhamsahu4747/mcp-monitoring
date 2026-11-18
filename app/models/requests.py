@@ -1,7 +1,7 @@
 """Domain models and state machine for authorization requests and audit records.
 
 Implements strict state transition enforcement, Pydantic v2 validation,
-and sensitive data redaction.
+at-most-once dispatch guarantees, and sensitive data redaction.
 """
 
 from __future__ import annotations
@@ -75,6 +75,10 @@ class AuthorizationCancelledError(AuthorizationError):
     """Raised when an authorization request is cancelled before completion."""
 
 
+class AlreadyDispatchedError(AuthorizationError):
+    """Raised when attempting to dispatch an authorization request more than once."""
+
+
 def redact_sensitive_data(
     data: Any,
     sensitive_keys: Sequence[str] = (
@@ -107,13 +111,11 @@ def redact_sensitive_data(
             key_is_sensitive = any(s in k_lower for s in normalized_keys)
 
             if isinstance(v, dict):
-                # Always recurse into sub-dictionaries to preserve structural schema
                 redacted_dict[k] = redact_sensitive_data(v, normalized_keys)
             elif isinstance(v, (list, tuple, set)):
                 if key_is_sensitive and not any(
                     isinstance(item, (dict, list, tuple, set)) for item in v
                 ):
-                    # Mask collections of primitive secrets (e.g. passwords: ["a", "b"])
                     masked = ["[REDACTED]" for _ in v]
                     redacted_dict[k] = type(v)(masked) if not isinstance(v, set) else set(masked)
                 else:
@@ -203,6 +205,14 @@ class AuthorizationRequest(BaseModel):
         default=None,
         description="Explanation or error details associated with the final status.",
     )
+    dispatched: bool = Field(
+        default=False,
+        description="True if tool execution was dispatched upstream. Enforces at-most-once.",
+    )
+    dispatched_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp when execution was dispatched.",
+    )
 
     def is_terminal(self) -> bool:
         """Check if request has reached an immutable terminal state."""
@@ -233,6 +243,25 @@ class AuthorizationRequest(BaseModel):
         self.decision_at = timestamp or datetime.now(timezone.utc)
         if reason:
             self.reason = reason
+
+    def mark_dispatched(self) -> None:
+        """Mark request as dispatched upstream. Guarantees at-most-once dispatch.
+
+        Raises:
+            AlreadyDispatchedError: If request was already dispatched.
+            InvalidStateTransitionError: If request is not in APPROVED status.
+        """
+        if self.dispatched:
+            raise AlreadyDispatchedError(
+                f"At-most-once violation: Request {self.request_id} has already been dispatched."
+            )
+        if self.status != AuthorizationStatus.APPROVED:
+            raise InvalidStateTransitionError(
+                f"Cannot dispatch request {self.request_id}: status is {self.status.value}, "
+                f"expected APPROVED."
+            )
+        self.dispatched = True
+        self.dispatched_at = datetime.now(timezone.utc)
 
     def get_redacted_arguments(
         self, sensitive_keys: Optional[Sequence[str]] = None
