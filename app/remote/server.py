@@ -41,6 +41,9 @@ class RemoteMCPGatewayServer:
         self.broker = broker or agent_broker
         self.server_name = server_name
 
+        # Retain background tasks preventing premature garbage collection
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+
         # Connect authorization notifications to the WebSocket agent broker
         self.auth_mgr.set_notification_hook(self._broker_notification_hook)
 
@@ -76,7 +79,9 @@ class RemoteMCPGatewayServer:
                     e,
                 )
 
-        asyncio.create_task(_forward_and_resolve())
+        task = asyncio.create_task(_forward_and_resolve())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _handle_list_tools(
         self,

@@ -26,12 +26,15 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     decision_timestamp TEXT,
     execution_outcome TEXT,
     failure_reason TEXT,
-    arguments_redacted TEXT NOT NULL
+    arguments_redacted TEXT NOT NULL,
+    client_id TEXT,
+    session_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs (timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_server_tool ON audit_logs (server_name, tool_name);
 CREATE INDEX IF NOT EXISTS idx_audit_decision ON audit_logs (decision);
+CREATE INDEX IF NOT EXISTS idx_audit_client_session ON audit_logs (client_id, session_id);
 """
 
 

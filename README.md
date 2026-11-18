@@ -65,8 +65,8 @@ flowchart TD
         ProdServers["Third-Party MCP Servers (Filesystem, DB, Shell)"]
     end
 
-    CD -->|"stdio JSON-RPC (Unbuffered)"| LocalProxy
-    CW -->|"HTTPS POST /mcp (Bearer API Key)"| RemoteGateway
+    CD -->|stdio JSON-RPC (Unbuffered)| LocalProxy
+    CW -->|HTTPS POST /mcp (Bearer API Key)| RemoteGateway
 
     LocalProxy --> Interceptor
     RemoteGateway --> RateLimit
@@ -75,15 +75,15 @@ flowchart TD
     Interceptor --> AuthManager
     AuthManager --> Registry
 
-    LocalProxy -.->|"Local IPC (Port 8765)"| DesktopApp
-    WSBroker <==|"Authenticated Reverse WebSocket"==> DesktopApp
+    LocalProxy -.->|Local IPC (Port 8765)| DesktopApp
+    WSBroker <-->|Authenticated Reverse WebSocket| DesktopApp
 
     DesktopApp --> Popup
     DesktopApp --> Tray
-    Popup -->|"Human Decision"| DesktopApp
+    Popup -->|Human Decision| DesktopApp
 
-    AuthManager -->|"Record Outcome"| AuditDB
-    Interceptor -->|"Approved Tool Calls Only (At-Most-Once)"| UpstreamBoundary
+    AuthManager -->|Record Outcome| AuditDB
+    Interceptor -->|Approved Tool Calls Only (At-Most-Once)| UpstreamBoundary
     UpstreamBoundary --> MockServer
     UpstreamBoundary --> ProdServers
 ```
@@ -93,12 +93,14 @@ flowchart TD
 ## 4. Local vs. Remote MCP Architecture
 
 ### 4.1 Local stdio MCP Architecture (Claude Desktop)
+
 - **Protocol**: Standard I/O streams using JSON-RPC 2.0 frames.
 - **Execution Guard**: Claude Desktop launches `python -u -m app.main local-proxy`.
 - **Channel Isolation**: Diagnostic and operational logs are strictly written to `sys.stderr`. Standard output (`sys.stdout`) is reserved 100% for valid MCP JSON-RPC protocol messages.
 - **IPC Link**: Communicates with the background `WalledAIDesktopApp` over loopback IPC HTTP/WebSocket on `127.0.0.1:8765`.
 
 ### 4.2 Remote Streamable HTTP Architecture (Claude Web & Remote Agents)
+
 - **Protocol**: MCP Streamable HTTP transport combining HTTP POST requests and Server-Sent Events (SSE).
 - **Endpoint**: Mounted at `/mcp` with direct path rewriting to eliminate client 307 redirects.
 - **Session Management**: Backed by `StreamableHTTPSessionManager`, tracking client sessions via `mcp-session-id` headers and managing SSE event streams.
@@ -167,7 +169,9 @@ stateDiagram-v2
 ```
 
 ### Categorized Audit Outcomes
+
 Audit records persisted to SQLite normalize all terminal states:
+
 - `USER_APPROVED`: Explicit human approval.
 - `USER_REJECTED`: Explicit human rejection.
 - `USER_DISMISSED`: User dismissed or closed the authorization popup without deciding.
@@ -190,6 +194,7 @@ Audit records persisted to SQLite normalize all terminal states:
 ## 8. WebSocket Authentication & Production Security Considerations
 
 Walled AI accepts agent credentials during the initial WebSocket handshake via:
+
 1. `Authorization: Bearer <AGENT_AUTH_TOKEN>` (Header)
 2. `X-Agent-Token: <AGENT_AUTH_TOKEN>` (Header)
 3. `?token=<AGENT_AUTH_TOKEN>` (Query string parameter)
@@ -198,12 +203,15 @@ Walled AI accepts agent credentials during the initial WebSocket handshake via:
 
 > [!WARNING]
 > While passing credentials via `?token=...` is provided for broad client compatibility, **query-string credentials pose security risks in production environments**:
+>
 > - **Access Log Exposure**: Standard reverse proxies (Nginx, Caddy, Cloudflare, AWS ALB) routinely log query strings to access logs in plain text.
 > - **Referer Leakage**: URLs containing query parameters may be forwarded in HTTP `Referer` headers if navigation occurs.
 > - **Process & History Snooping**: URLs with tokens can be captured in shell command histories, process monitoring tools, or proxy caches.
 
 ### Recommended Production Alternatives
+
 For internet-facing deployments:
+
 1. **Header-Based Authentication**: Configure clients to pass `Authorization: Bearer <token>` in the initial HTTP upgrade request headers.
 2. **Short-Lived Ticket Exchange**: Request an ephemeral single-use token via an authenticated `POST /api/auth/ticket` endpoint before establishing the WebSocket connection.
 3. **Mutual TLS (mTLS)**: Configure the reverse proxy to mandate and verify an X.509 client certificate installed on the desktop agent workstation.
@@ -213,18 +221,21 @@ For internet-facing deployments:
 ## 9. Installation & Windows Setup Guide
 
 ### 9.1 Prerequisites
+
 - **OS**: Windows 10/11 (64-bit)
 - **Python**: Python 3.12 (Python 3.15 is explicitly unsupported)
 
 Verify Python version:
+
 ```powershell
 py -3.12 --version
 ```
 
 ### 9.2 Virtual Environment & Dependencies
+
 ```powershell
 # Navigate to project root
-cd E:\personal-project\mcp-assignment
+cd mcp-assignment
 
 # Create virtual environment
 py -3.12 -m venv .venv
@@ -238,12 +249,15 @@ pip install -r requirements-dev.txt
 ```
 
 ### 9.3 Environment Configuration
+
 Copy the template and inspect configuration:
+
 ```powershell
 Copy-Item .env.example .env
 ```
 
 Key environment variables:
+
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
 | `AUTH_TIMEOUT_SECONDS` | `30.0` | Deadline in seconds before unanswered requests fail closed. |
@@ -251,8 +265,8 @@ Key environment variables:
 | `DATABASE_PATH` | `data/audit.db` | Local SQLite database file location. |
 | `REMOTE_HOST` | `127.0.0.1` | Bind host for remote gateway or local IPC. |
 | `REMOTE_PORT` | `8765` | Bind port for remote gateway or local IPC. |
-| `AGENT_AUTH_TOKEN` | `change-this-...` | Secret token required for Desktop Agent connection. |
-| `REMOTE_CLIENT_API_KEY` | `change-this-...` | Bearer token required for remote clients (Claude Web). |
+| `AGENT_AUTH_TOKEN` | `<generate-secure-token>` | Secret token required for Desktop Agent connection. |
+| `REMOTE_CLIENT_API_KEY` | `<generate-secure-token>` | Bearer token required for remote clients (Claude Web). |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Maximum allowed requests per minute per remote client IP. |
 | `LOG_LEVEL` | `INFO` | Logging verbosity (written strictly to stderr). |
 
@@ -289,26 +303,32 @@ All features are accessible via `python -m app.main`:
 Walled AI includes built-in tools to manage `%APPDATA%\Claude\claude_desktop_config.json` safely:
 
 ### 11.1 Automated Safe Installation
+
 ```powershell
 .\.venv\Scripts\python.exe -m app.main install-claude-config
 ```
+
 - Creates a timestamped backup before writing (e.g. `claude_desktop_config.json.bak.20261118_143000`).
 - Preserves all pre-existing third-party MCP servers intact.
 - Adds `walled-ai-gateway` pointing to the Python 3.12 virtual environment with `-u` unbuffered transport.
 
 ### 11.2 Validate Configuration
+
 ```powershell
 .\.venv\Scripts\python.exe -m app.main validate-claude-config
 ```
+
 Validates JSON syntax, executable path existence, Python 3.12 compatibility, and working directory validity.
 
 ### 11.3 Rollback Configuration
+
 ```powershell
 .\.venv\Scripts\python.exe -m app.main rollback-claude-config
 ```
+
 Restores configuration from the most recent backup file.
 
-Detailed documentation: [claude_desktop_integration.md](file:///e:/personal-project/mcp-assignment/docs/claude_desktop_integration.md)
+Detailed documentation: [claude_desktop_integration.md](docs/claude_desktop_integration.md)
 
 ---
 
@@ -317,6 +337,7 @@ Detailed documentation: [claude_desktop_integration.md](file:///e:/personal-proj
 For production deployments serving remote clients like Claude Web:
 
 ### 12.1 Start the Gateway
+
 ```powershell
 .\.venv\Scripts\python.exe -m app.main remote-gateway --host 127.0.0.1 --port 8765
 ```
@@ -324,6 +345,7 @@ For production deployments serving remote clients like Claude Web:
 ### 12.2 Reverse Proxy Configuration (TLS Termination)
 
 #### Nginx Configuration Example
+
 ```nginx
 server {
     listen 443 ssl http2;
@@ -366,7 +388,7 @@ server {
 }
 ```
 
-Detailed deployment instructions: [remote_mcp_gateway.md](file:///e:/personal-project/mcp-assignment/docs/remote_mcp_gateway.md)
+Detailed deployment instructions: [remote_mcp_gateway.md](docs/remote_mcp_gateway.md)
 
 ---
 
@@ -374,6 +396,7 @@ Detailed deployment instructions: [remote_mcp_gateway.md](file:///e:/personal-pr
 
 > [!IMPORTANT]
 > **Distinction Between Protocol Integration Tests and Live Claude Web Account Testing**:
+>
 > - **Automated MCP Protocol Tests (`tests/integration/test_remote_gateway.py`)**: Executes 16 automated end-to-end integration tests over the authentic Streamable HTTP transport and WebSocket broker using official MCP SDK structures, `ASGITransport`, and safe mock upstream servers. All 16 checks (initialization, tool discovery, approval, rejection, timeout, agent disconnection, client isolation, and rate limiting) are fully automated and verified.
 > - **Live Consumer Account Testing**: Connecting a live Claude Web consumer account (`claude.ai`) requires registering the gateway endpoint via Claude Web's MCP Connectors UI over a public HTTPS domain. Live testing with a paid consumer Claude Web account was not part of the local offline automated test suite.
 
@@ -382,6 +405,7 @@ Detailed deployment instructions: [remote_mcp_gateway.md](file:///e:/personal-pr
 ## 14. Testing & Code Quality Results
 
 ### 14.1 Test Suite Execution
+
 ```powershell
 # Run full project test suite
 .\.venv\Scripts\python.exe -m pytest -v
@@ -391,11 +415,13 @@ Detailed deployment instructions: [remote_mcp_gateway.md](file:///e:/personal-pr
 ```
 
 **Results:**
+
 ```text
 128 passed in 82.29s (100% pass rate across all 6 milestones)
 ```
 
 Test Distribution:
+
 - `tests/unit/test_foundation.py`: 35 tests (Pydantic validation, state transitions, redaction, CLI)
 - `tests/unit/test_interception.py`: 5 tests (Parser, interceptor flow, error handling)
 - `tests/unit/test_desktop_app.py`: 12 tests (UI components, presenter, tray, dismissals)
@@ -410,6 +436,7 @@ Test Distribution:
 - `tests/integration/test_remote_gateway.py`: 16 tests (Streamable HTTP, WebSocket broker, rate limits)
 
 ### 14.2 Code Quality & Static Analysis
+
 ```powershell
 # Ruff Linting & Formatting
 .\.venv\Scripts\python.exe -m ruff check app tests
@@ -417,6 +444,7 @@ Test Distribution:
 # Mypy Static Type Checking
 .\.venv\Scripts\python.exe -m mypy app
 ```
+
 - **Ruff**: `All checks passed! (0 errors)`
 - **Mypy**: `Success: no issues found in 36 source files`
 
@@ -436,6 +464,7 @@ Performance metrics were measured during live Streamable HTTP request cycles wit
 ```
 
 ### Methodology & Limitations
+
 - **In-Process Loopback**: Benchmarks were measured using in-memory ASGI transports and loopback subprocess IPC. Real-world WAN network latency (typically 20–80 ms for TLS handshakes) will add to total round-trip time.
 - **Human Factor**: In production, human approval latency (typically 2–10 seconds) dominates total response time. The gateway overhead (< 70 ms) represents a negligible fraction of the decision lifecycle.
 
@@ -451,8 +480,8 @@ Performance metrics were measured during live Streamable HTTP request cycles wit
 
 ## 17. Documentation Index
 
-- [Architecture Guide](file:///e:/personal-project/mcp-assignment/docs/architecture.md)
-- [Claude Desktop Integration Guide](file:///e:/personal-project/mcp-assignment/docs/claude_desktop_integration.md)
-- [Remote MCP Gateway & Claude Web Guide](file:///e:/personal-project/mcp-assignment/docs/remote_mcp_gateway.md)
-- [System Requirements Specification](file:///e:/personal-project/mcp-assignment/docs/requirements.md)
-- [Verification & Test Plan](file:///e:/personal-project/mcp-assignment/docs/test-plan.md)
+- [Architecture Guide](docs/architecture.md)
+- [Claude Desktop Integration Guide](docs/claude_desktop_integration.md)
+- [Remote MCP Gateway & Claude Web Guide](docs/remote_mcp_gateway.md)
+- [System Requirements Specification](docs/requirements.md)
+- [Verification & Test Plan](docs/test-plan.md)

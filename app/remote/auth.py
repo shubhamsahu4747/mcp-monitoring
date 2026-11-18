@@ -27,12 +27,11 @@ class RateLimiter:
         now = time.time()
         window_start = now - 60.0
 
-        timestamps = self._requests[client_id]
-        # Prune expired timestamps
+        timestamps = self._requests.get(client_id, [])
         valid_timestamps = [t for t in timestamps if t > window_start]
-        self._requests[client_id] = valid_timestamps
 
         if len(valid_timestamps) >= self.limit_per_minute:
+            self._requests[client_id] = valid_timestamps
             logger.warning(
                 "Rate limit exceeded for client '%s' (%d req/min)",
                 client_id,
@@ -41,6 +40,17 @@ class RateLimiter:
             return False
 
         valid_timestamps.append(now)
+        self._requests[client_id] = valid_timestamps
+
+        # Periodic memory cleanup when many client IPs are tracked
+        if len(self._requests) > 1000:
+            stale = [
+                k for k, ts in self._requests.items()
+                if not any(t > window_start for t in ts)
+            ]
+            for k in stale:
+                self._requests.pop(k, None)
+
         return True
 
     def reset(self) -> None:

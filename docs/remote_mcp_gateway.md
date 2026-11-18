@@ -24,17 +24,17 @@ flowchart TD
         AuditDB[("SQLite Audit Repository")]
     end
 
-    ClaudeWeb -->|"POST /mcp (Bearer API Key)"| StreamableTransport
-    StreamableTransport -->|"Intercept Tools/Call"| Gateway
-    Gateway -->|"Route Authorization Request"| WSBroker
-    WSBroker <==|"Bidirectional Authenticated WebSocket"==> DesktopAgent
-    DesktopAgent -->|"Display Popup & Redacted Arguments"| Popup
-    Popup -->|"Human Decision (Approve / Reject)"| DesktopAgent
-    DesktopAgent -->|"Decision (APPROVED / REJECTED)"| WSBroker
-    WSBroker -->|"Apply Decision & Enforce Single Dispatch"| Gateway
-    Gateway -->|"Execute Approved Call Only"| UpstreamMCP
-    Gateway -->|"Persist Audit Record"| AuditDB
-    Gateway -->|"Stream Result (SSE / JSON-RPC)"| ClaudeWeb
+    ClaudeWeb -->|POST /mcp (Bearer API Key)| StreamableTransport
+    StreamableTransport -->|Intercept Tools/Call| Gateway
+    Gateway -->|Route Authorization Request| WSBroker
+    WSBroker <-->|Bidirectional Authenticated WebSocket| DesktopAgent
+    DesktopAgent -->|Display Popup & Redacted Arguments| Popup
+    Popup -->|Human Decision (Approve / Reject)| DesktopAgent
+    DesktopAgent -->|Decision (APPROVED / REJECTED)| WSBroker
+    WSBroker -->|Apply Decision & Enforce Single Dispatch| Gateway
+    Gateway -->|Execute Approved Call Only| UpstreamMCP
+    Gateway -->|Persist Audit Record| AuditDB
+    Gateway -->|Stream Result (SSE / JSON-RPC)| ClaudeWeb
 ```
 
 ### Key Security Invariants

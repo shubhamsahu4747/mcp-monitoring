@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import OrderedDict
 from datetime import datetime, timezone
-from typing import Any, Dict, Set
+from typing import Any, Dict
 
 from fastapi import WebSocket
 
@@ -23,20 +24,38 @@ from app.models.requests import (
 logger = logging.getLogger(__name__)
 
 
+class BoundedSet:
+    """Thread/coroutine-safe bounded FIFO set with O(1) membership check."""
+
+    def __init__(self, maxsize: int = 10000) -> None:
+        self._maxsize = maxsize
+        self._items: OrderedDict[str, None] = OrderedDict()
+
+    def add(self, item: str) -> None:
+        self._items[item] = None
+        if len(self._items) > self._maxsize:
+            self._items.popitem(last=False)
+
+    def __contains__(self, item: object) -> bool:
+        return item in self._items
+
+
 class WebSocketAgentBroker:
     """Brokers authorization requests and decisions between Remote Gateway and Desktop Agents."""
 
     def __init__(self) -> None:
         # Active connected agent WebSockets keyed by unique agent connection ID
         self._active_connections: Dict[str, WebSocket] = {}
+        # Per-agent lock serializing outbound WebSocket frame transmission
+        self._send_locks: Dict[str, asyncio.Lock] = {}
         # Futures awaiting user decision keyed by request_id
         self._pending_decisions: Dict[str, asyncio.Future[AuthorizationDecision]] = {}
         # Map of request_id -> agent_id handling that request
         self._request_agent_mapping: Dict[str, str] = {}
         # Lock for atomic connection and pending request manipulation
         self._lock = asyncio.Lock()
-        # Track resolved requests to prevent duplicate decision submissions
-        self._resolved_requests: Set[str] = set()
+        # Track resolved requests with bounded memory to prevent duplicate decision submissions
+        self._resolved_requests = BoundedSet(maxsize=10000)
 
     @property
     def active_agent_count(self) -> int:
@@ -51,6 +70,7 @@ class WebSocketAgentBroker:
         """Register an authenticated desktop agent WebSocket connection."""
         async with self._lock:
             self._active_connections[agent_id] = websocket
+            self._send_locks[agent_id] = asyncio.Lock()
             logger.info(
                 "Registered desktop agent '%s'. Total active agents: %d",
                 agent_id,
@@ -61,6 +81,7 @@ class WebSocketAgentBroker:
         """Unregister an agent on disconnect and fail closed all pending requests owned by it."""
         async with self._lock:
             self._active_connections.pop(agent_id, None)
+            self._send_locks.pop(agent_id, None)
             logger.warning(
                 "Unregistered desktop agent '%s'. Remaining active agents: %d",
                 agent_id,
@@ -135,6 +156,7 @@ class WebSocketAgentBroker:
             "session_id": request.session_id,
         }
 
+        send_lock = self._send_locks.get(agent_id)
         try:
             logger.info(
                 "Forwarding remote request %s ('%s') to desktop agent '%s'...",
@@ -142,7 +164,11 @@ class WebSocketAgentBroker:
                 request.tool_name,
                 agent_id,
             )
-            await ws.send_json(payload)
+            if send_lock:
+                async with send_lock:
+                    await ws.send_json(payload)
+            else:
+                await ws.send_json(payload)
         except Exception as e:
             logger.error("Failed to send authorization request to agent %s: %s", agent_id, e)
             async with self._lock:

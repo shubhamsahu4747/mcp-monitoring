@@ -417,15 +417,16 @@ class MainWindow(QMainWindow):
         self.lbl_stat_pending.setText(str(num_pending))
 
         if num_pending == 0:
+            self.table_pending.setRowCount(0)
             self.empty_state_frame.show()
             self.table_pending.hide()
             return
 
         self.empty_state_frame.hide()
         self.table_pending.show()
+        self.table_pending.setRowCount(num_pending)
 
         for row, req in enumerate(self._pending_requests.values()):
-            self.table_pending.insertRow(row)
 
             # Request ID (truncated)
             id_item = QTableWidgetItem(req.request_id[:8] + "...")
@@ -564,9 +565,8 @@ class MainWindow(QMainWindow):
 
     def _render_audit_table(self, records: List[AuditRecord]) -> None:
         """Render given list of records to the audit table."""
-        self.table_audit.setRowCount(0)
-
         if not records:
+            self.table_audit.setRowCount(0)
             self.audit_empty_frame.show()
             self.table_audit.hide()
             self.status_bar.showMessage("Audit log ready. Total records loaded: 0")
@@ -574,9 +574,9 @@ class MainWindow(QMainWindow):
 
         self.audit_empty_frame.hide()
         self.table_audit.show()
+        self.table_audit.setRowCount(len(records))
 
         for row, rec in enumerate(records):
-            self.table_audit.insertRow(row)
 
             # Timestamp
             ts_str = RequestPresenter.get_formatted_timestamp(rec.timestamp)

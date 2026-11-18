@@ -41,6 +41,8 @@ class RemoteAgentWebSocketClient:
         self._running = False
         self._connected = False
         self._ws: Any = None
+        self._send_lock = asyncio.Lock()
+        self._background_tasks: set[asyncio.Task[Any]] = set()
         self._loop_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
 
@@ -149,7 +151,8 @@ class RemoteAgentWebSocketClient:
             while self._running and self._connected:
                 await asyncio.sleep(self.heartbeat_interval)
                 ping_payload = json.dumps({"type": "ping"})
-                await ws.send(ping_payload)
+                async with self._send_lock:
+                    await ws.send(ping_payload)
         except (asyncio.CancelledError, ConnectionClosed):
             pass
         except Exception as e:
@@ -167,13 +170,16 @@ class RemoteAgentWebSocketClient:
 
         msg_type = data.get("type")
         if msg_type == "ping":
-            await ws.send(json.dumps({"type": "pong"}))
+            async with self._send_lock:
+                await ws.send(json.dumps({"type": "pong"}))
         elif msg_type == "pong":
             # Heartbeat acknowledged
             pass
         elif msg_type == "authorize":
             # Spawn asynchronous authorization handling to avoid blocking message loop
-            asyncio.create_task(self._process_authorization_request(data, ws))
+            task = asyncio.create_task(self._process_authorization_request(data, ws))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
         else:
             logger.warning("Unknown message type from remote gateway: %s", msg_type)
 
@@ -218,6 +224,7 @@ class RemoteAgentWebSocketClient:
                 decision.request_id,
                 decision.decision.value,
             )
-            await ws.send(json.dumps(response_payload))
+            async with self._send_lock:
+                await ws.send(json.dumps(response_payload))
         except Exception as e:
             logger.error("Error processing remote authorization request %s: %s", request_id, e)

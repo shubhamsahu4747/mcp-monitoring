@@ -37,14 +37,18 @@ class AuditRepository:
             decision_timestamp,
             execution_outcome,
             failure_reason,
-            arguments_redacted
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            arguments_redacted,
+            client_id,
+            session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(request_id) DO UPDATE SET
             decision = excluded.decision,
             decision_timestamp = excluded.decision_timestamp,
             execution_outcome = excluded.execution_outcome,
             failure_reason = excluded.failure_reason,
-            arguments_redacted = excluded.arguments_redacted;
+            arguments_redacted = excluded.arguments_redacted,
+            client_id = excluded.client_id,
+            session_id = excluded.session_id;
         """
         params = (
             record.request_id,
@@ -56,6 +60,8 @@ class AuditRepository:
             record.execution_outcome,
             record.failure_reason,
             json.dumps(record.arguments_redacted),
+            record.client_id,
+            record.session_id,
         )
 
         async with self.manager.connection() as conn:
@@ -90,6 +96,7 @@ class AuditRepository:
             if row["decision_timestamp"]
             else None
         )
+        keys = row.keys()
         return AuditRecord(
             request_id=row["request_id"],
             server_name=row["server_name"],
@@ -100,6 +107,8 @@ class AuditRepository:
             execution_outcome=row["execution_outcome"],
             failure_reason=row["failure_reason"],
             arguments_redacted=arguments_data,
+            client_id=row["client_id"] if "client_id" in keys else None,
+            session_id=row["session_id"] if "session_id" in keys else None,
         )
 
 

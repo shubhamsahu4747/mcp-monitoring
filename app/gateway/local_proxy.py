@@ -40,6 +40,9 @@ class LocalMCPProxy:
         self.server_name = server_name
         self.enable_desktop_ipc = enable_desktop_ipc
 
+        # Background tasks set preventing garbage collection
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+
         # IPC client communicating with running WalledAIDesktopApp
         self.ipc_client: IPCAuthorizationClient | None = None
         if self.enable_desktop_ipc and self.interceptor.auth_mgr._notification_hook is None:
@@ -71,7 +74,9 @@ class LocalMCPProxy:
             except Exception as e:
                 logger.error("IPC forward error for request %s: %s", request.request_id, e)
 
-        asyncio.create_task(_forward_and_resolve())
+        task = asyncio.create_task(_forward_and_resolve())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _handle_list_tools(
         self,
