@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 import sys
 from typing import Any, Dict, Optional
 
 import qasync  # type: ignore[import-untyped]
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from app.authorization.manager import AuthorizationManager, authorization_manager
@@ -100,6 +102,12 @@ class WalledAIDesktopApp:
                 remote_url=self.remote_url,
                 desktop_app=self,
             )
+
+        # Periodic wake-up timer ensuring Python interpreter evaluates OS signals (Ctrl+C)
+        self._sigint_timer = QTimer(self.main_window)
+        self._sigint_timer.setInterval(200)
+        self._sigint_timer.timeout.connect(lambda: None)
+        self._sigint_timer.start()
 
     async def request_authorization_via_gui(
         self,
@@ -372,7 +380,7 @@ class WalledAIDesktopApp:
 
 
 def run_desktop(remote_url: Optional[str] = None) -> int:
-    """Launch PySide6 Windows desktop application using qasync."""
+    """Launch PySide6 Windows desktop application using qasync with Ctrl+C support."""
     existing_app = QApplication.instance()
     app = existing_app if isinstance(existing_app, QApplication) else QApplication(sys.argv)
     loop = qasync.QEventLoop(app)
@@ -380,10 +388,52 @@ def run_desktop(remote_url: Optional[str] = None) -> int:
 
     desktop_app = WalledAIDesktopApp(remote_url=remote_url)
 
+    # 1. Python signal handler for Ctrl+C (SIGINT) and termination (SIGTERM)
+    def _sigint_handler(signum: int, frame: Any) -> None:
+        logger.info(
+            "Received termination signal (%d). Shutting down desktop application...",
+            signum,
+        )
+        if not desktop_app._shutdown_event.is_set():
+            loop.create_task(desktop_app.shutdown())
+
+    signal.signal(signal.SIGINT, _sigint_handler)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _sigint_handler)
+
+    # 2. Windows-native Console Ctrl Handler (catches Ctrl+C in Windows Terminal/PowerShell)
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        HandlerRoutine = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+        def _win_console_ctrl_handler(ctrl_type: int) -> bool:
+            if ctrl_type in (0, 1, 2):  # CTRL_C_EVENT, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT
+                logger.info(
+                    "Windows console control event (%d) received. Shutting down...",
+                    ctrl_type,
+                )
+                if not desktop_app._shutdown_event.is_set():
+                    loop.call_soon_threadsafe(
+                        lambda: asyncio.create_task(desktop_app.shutdown())
+                    )
+                return True
+            return False
+
+        _console_handler_ref = HandlerRoutine(_win_console_ctrl_handler)
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(_console_handler_ref, True)
+
     async def _async_main() -> None:
         await desktop_app.start()
         await desktop_app.wait_until_closed()
 
-    with loop:
-        loop.run_until_complete(_async_main())
+    try:
+        with loop:
+            loop.run_until_complete(_async_main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Desktop application received keyboard interrupt, completing shutdown...")
+        if not desktop_app._shutdown_event.is_set():
+            loop.run_until_complete(desktop_app.shutdown())
+
     return 0

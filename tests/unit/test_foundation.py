@@ -347,7 +347,8 @@ def test_main_cli_modes() -> None:
     # Test main function dispatch with different arguments
     assert main([]) == 0
     assert main(["info"]) == 0
-    assert main(["local-proxy"]) == 0
+    with patch("app.gateway.local_proxy.LocalMCPProxy.run", return_value=None):
+        assert main(["local-proxy"]) == 0
     with patch("app.desktop.application.run_desktop", return_value=0):
         assert main(["desktop"]) == 0
     with patch("uvicorn.run", return_value=None):

@@ -79,15 +79,33 @@ Accept: application/json, text/event-stream
 ### 2.2 Desktop Agent Control Interface (`/ws/agent`)
 
 - **Transport**: Authenticated RFC 6455 WebSocket.
-- **Authentication**: Checked against `AGENT_AUTH_TOKEN` via query param (`?token=...`) or `Authorization: Bearer ...`. Unauthorized connections are terminated with code `1008` (Policy Violation).
+- **Authentication**: Checked against `AGENT_AUTH_TOKEN` via HTTP upgrade headers (`Authorization: Bearer <token>` or `X-Agent-Token`) or fallback query parameter (`?token=...`). Unauthorized connections are terminated with code `1008` (Policy Violation).
 - **Message Types**:
   - `authorize`: Gateway dispatches tool execution request (includes `request_id`, `tool_name`, `arguments`, `client_id`, `session_id`, `timeout_seconds`).
   - `decision`: Desktop agent returns human decision (`APPROVED` or `REJECTED`).
   - `ping` / `pong`: Periodic keepalive heartbeats every 15 seconds.
 
+#### Security Implications of Query-String Credentials & Production Alternatives
+
+> [!WARNING]
+> While passing `?token=<AGENT_AUTH_TOKEN>` in the query string is supported for development and simple WebSocket clients that cannot set headers during handshake, query-string credentials have inherent security risks in production environments:
+> - **Log Leakage**: Query parameters are routinely recorded in plain text in access logs, reverse proxy logs (Nginx, Caddy, Cloudflare), and monitoring tools.
+> - **Referer Exposure**: If web browsers or proxies forward URLs, tokens in query parameters can be leaked in `Referer` headers.
+> - **Shoulder Surfing & History**: URLs with tokens may be cached in shell history or proxy caches.
+
+**Recommended Production Alternatives:**
+1. **Header-Based Handshake**: Provide `Authorization: Bearer <AGENT_AUTH_TOKEN>` or `X-Agent-Token` in the initial HTTP `GET /ws/agent` upgrade request headers. Walled AI natively inspects these headers before query parameters.
+2. **Short-Lived Ticket Exchange**: Authenticate via an initial `POST /api/auth/ticket` endpoint to retrieve a single-use ticket valid for 30 seconds, then pass the ephemeral ticket in the WebSocket URL.
+3. **Mutual TLS (mTLS)**: Configure the reverse proxy (Nginx/Caddy) to require and verify an X.509 client certificate installed on the desktop workstation.
+
 ---
 
-## 3. End-to-End Authorization Sequence
+## 3. Testing Scope & Claude Web Verification Notice
+
+> [!IMPORTANT]
+> **Distinction Between Protocol Tests and Live Claude Web Account Testing**:
+> - **Verified Integration Tests**: The test suite in `tests/integration/test_remote_gateway.py` executes authentic, automated MCP protocol integration tests over Streamable HTTP and WebSocket using official MCP SDK structures, `ASGITransport`, and subprocess upstream servers. All 16 checks (initialization, tool discovery, approval, rejection, timeout, agent disconnection, client isolation, and rate limiting) have been automated and verified.
+> - **Live Claude Web Setup**: Connecting a production Claude Web (`claude.ai`) workspace to Walled AI requires deploying the gateway with a publicly reachable HTTPS domain (using the Nginx or Caddy configurations detailed in Section 5) and adding the endpoint under Claude Web's MCP Connectors settings. Live testing with a paid consumer Claude Web account was not part of the local offline test automation.
 
 ```mermaid
 sequenceDiagram
