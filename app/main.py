@@ -130,8 +130,9 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(proxy.run())
         return 0
     elif args.command == "desktop":
-        sys.stderr.write("[INFO] Desktop Agent launching...\n")
-        return 0
+        from app.desktop.application import run_desktop
+
+        return run_desktop()
     elif args.command == "remote-gateway":
         sys.stderr.write("[INFO] Remote Gateway launching...\n")
         return 0

@@ -15,6 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -347,5 +348,6 @@ def test_main_cli_modes() -> None:
     assert main([]) == 0
     assert main(["info"]) == 0
     assert main(["local-proxy"]) == 0
-    assert main(["desktop"]) == 0
+    with patch("app.desktop.application.run_desktop", return_value=0):
+        assert main(["desktop"]) == 0
     assert main(["remote-gateway"]) == 0

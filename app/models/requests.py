@@ -214,6 +214,11 @@ class AuthorizationRequest(BaseModel):
         description="UTC timestamp when execution was dispatched.",
     )
 
+    @property
+    def timestamp(self) -> datetime:
+        """Alias for created_at to provide consistent timestamp property access."""
+        return self.created_at
+
     def is_terminal(self) -> bool:
         """Check if request has reached an immutable terminal state."""
         return self.status in TERMINAL_STATUSES
