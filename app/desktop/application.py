@@ -16,6 +16,7 @@ from app.desktop.authorization_popup import AuthorizationPopup
 from app.desktop.ipc_server import DesktopIPCServer
 from app.desktop.main_window import MainWindow
 from app.desktop.notifications import NotificationService
+from app.desktop.remote_client import RemoteAgentWebSocketClient
 from app.desktop.tray import SystemTrayManager
 from app.models.requests import (
     AuthorizationDecision,
@@ -37,11 +38,13 @@ class WalledAIDesktopApp:
         audit_repository: Optional[AuditRepository] = None,
         enable_tray: bool = True,
         show_main_window: bool = True,
+        remote_url: Optional[str] = None,
     ) -> None:
         self.auth_mgr = auth_mgr or authorization_manager
         self.audit_repo = audit_repository or audit_repo
         self.enable_tray = enable_tray
         self.should_show_main_window = show_main_window
+        self.remote_url = remote_url
 
         # Ensure a single QApplication instance exists
         existing_app = QApplication.instance()
@@ -90,18 +93,30 @@ class WalledAIDesktopApp:
             port=settings.remote_port,
         )
 
+        # Outbound WebSocket client for Remote MCP Gateway (Milestone 6)
+        self.remote_client: Optional[RemoteAgentWebSocketClient] = None
+        if self.remote_url:
+            self.remote_client = RemoteAgentWebSocketClient(
+                remote_url=self.remote_url,
+                desktop_app=self,
+            )
+
     async def request_authorization_via_gui(
         self,
         server_name: str,
         tool_name: str,
         arguments: Dict[str, Any],
         timeout_seconds: float,
+        client_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> AuthorizationDecision:
         """Present authorization request in desktop UI and wait for user decision."""
         req = AuthorizationRequest(
             server_name=server_name,
             tool_name=tool_name,
             arguments=arguments,
+            client_id=client_id,
+            session_id=session_id,
         )
         loop = asyncio.get_running_loop()
         future: asyncio.Future[AuthorizationDecision] = loop.create_future()
@@ -296,6 +311,10 @@ class WalledAIDesktopApp:
         # Start IPC server for local MCP proxies (Claude Desktop integration)
         await self.ipc_server.start()
 
+        # Start Remote WebSocket client if remote URL configured (Milestone 6)
+        if self.remote_client:
+            await self.remote_client.start()
+
         # Update UI Component Status Indicators
         self.main_window.set_agent_status(
             True, f"Desktop Agent: Connected (Port {self.ipc_server.port})"
@@ -303,7 +322,12 @@ class WalledAIDesktopApp:
         self.main_window.set_upstream_status(
             True, f"Upstream: Connected ({settings.upstream_server_name})"
         )
-        self.main_window.set_gateway_status(True, "MCP Gateway: Standby (Ready)")
+        if self.remote_url:
+            self.main_window.set_gateway_status(
+                True, f"Remote Gateway: Connecting ({self.remote_url})"
+            )
+        else:
+            self.main_window.set_gateway_status(True, "MCP Gateway: Standby (Ready)")
         logger.info("Walled AI Desktop Application started successfully.")
 
     async def shutdown(self, quit_qt_app: bool = True) -> None:
@@ -314,7 +338,11 @@ class WalledAIDesktopApp:
         self.main_window.set_agent_status(False, "Desktop Agent: Disconnected")
         self.main_window.set_gateway_status(False, "MCP Gateway: Stopped")
 
-        # 0. Stop IPC server
+        # 0a. Stop remote WebSocket client
+        if self.remote_client:
+            await self.remote_client.stop()
+
+        # 0b. Stop IPC server
         await self.ipc_server.stop()
 
         # 1. Close all active popups
@@ -343,14 +371,14 @@ class WalledAIDesktopApp:
         await self._shutdown_event.wait()
 
 
-def run_desktop() -> int:
+def run_desktop(remote_url: Optional[str] = None) -> int:
     """Launch PySide6 Windows desktop application using qasync."""
     existing_app = QApplication.instance()
     app = existing_app if isinstance(existing_app, QApplication) else QApplication(sys.argv)
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    desktop_app = WalledAIDesktopApp()
+    desktop_app = WalledAIDesktopApp(remote_url=remote_url)
 
     async def _async_main() -> None:
         await desktop_app.start()

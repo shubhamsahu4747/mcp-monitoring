@@ -48,6 +48,8 @@ class AuthorizationManager:
         server_name: str,
         tool_name: str,
         arguments: Dict[str, Any],
+        client_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> AuthorizationRequest:
         """Intercept a tool invocation, request authorization, and await user decision.
 
@@ -55,6 +57,8 @@ class AuthorizationManager:
             server_name: Upstream MCP server hosting the tool.
             tool_name: Name of tool being called.
             arguments: Original tool arguments dictionary.
+            client_id: Optional downstream remote client identifier.
+            session_id: Optional downstream session identifier.
 
         Returns:
             The finalized AuthorizationRequest in an APPROVED or REJECTED state.
@@ -67,6 +71,8 @@ class AuthorizationManager:
             server_name=server_name,
             tool_name=tool_name,
             arguments=arguments,
+            client_id=client_id,
+            session_id=session_id,
         )
         loop = asyncio.get_running_loop()
         future: asyncio.Future[AuthorizationDecision] = loop.create_future()

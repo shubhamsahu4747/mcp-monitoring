@@ -54,12 +54,16 @@ class RequestInterceptor:
         self,
         name: str,
         arguments: Dict[str, Any] | None,
+        client_id: str | None = None,
+        session_id: str | None = None,
     ) -> types.CallToolResult:
         """Process an intercepted tools/call request.
 
         Args:
             name: Requested tool name.
             arguments: Original tool arguments dictionary.
+            client_id: Optional remote downstream client ID.
+            session_id: Optional remote downstream session ID.
 
         Returns:
             CallToolResult containing either upstream execution output or a valid MCP error.
@@ -79,6 +83,8 @@ class RequestInterceptor:
                 server_name=self.upstream_mgr.server_name,
                 tool_name=clean_name,
                 arguments=clean_args,
+                client_id=client_id,
+                session_id=session_id,
             )
         except AuthorizationTimeoutError:
             return types.CallToolResult(
@@ -111,6 +117,8 @@ class RequestInterceptor:
                 "agent is not running" in reason_lower
                 or "unreachable" in reason_lower
                 or "all connection attempts failed" in reason_lower
+                or "not connected" in reason_lower
+                or "disconnected" in reason_lower
             ):
                 outcome = AuditOutcome.BLOCKED_AGENT_UNAVAILABLE
                 error_msg = (

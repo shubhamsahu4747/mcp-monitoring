@@ -161,6 +161,21 @@ class AuthorizationPopup(QDialog):
         row4.addStretch()
         details_layout.addLayout(row4)
 
+        if self.request.client_id or self.request.session_id:
+            row5 = QHBoxLayout()
+            lbl_client_title = QLabel("Remote Client:")
+            lbl_client_title.setObjectName("metaLabel")
+            lbl_client_title.setFixedWidth(110)
+            client_text = self.request.client_id or "Remote Client"
+            if self.request.session_id:
+                client_text += f" (Session: {self.request.session_id[:8]})"
+            self.lbl_client_val = QLabel(client_text)
+            self.lbl_client_val.setObjectName("metaValueHighlight")
+            row5.addWidget(lbl_client_title)
+            row5.addWidget(self.lbl_client_val)
+            row5.addStretch()
+            details_layout.addLayout(row5)
+
         layout.addWidget(details_card)
 
         # 3. Arguments Section with Redacted JSON Viewer

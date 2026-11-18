@@ -228,6 +228,14 @@ class AuthorizationRequest(BaseModel):
         default=None,
         description="UTC timestamp when execution was dispatched.",
     )
+    client_id: Optional[str] = Field(
+        default=None,
+        description="Remote client or IP identifier if initiated remotely.",
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="MCP Streamable HTTP session identifier.",
+    )
 
     @property
     def timestamp(self) -> datetime:
@@ -306,6 +314,8 @@ class AuditRecord(BaseModel):
     execution_outcome: Optional[str] = None
     failure_reason: Optional[str] = None
     arguments_redacted: Dict[str, Any] = Field(default_factory=dict)
+    client_id: Optional[str] = None
+    session_id: Optional[str] = None
 
     @property
     def categorized_outcome(self) -> str:
@@ -330,7 +340,12 @@ class AuditRecord(BaseModel):
             reason_lower = (self.failure_reason or "").lower()
             if "dismiss" in reason_lower or "closed" in reason_lower:
                 return AuditOutcome.USER_DISMISSED
-            is_offline = "not running" in reason_lower or "unreachable" in reason_lower
+            is_offline = (
+                "not running" in reason_lower
+                or "unreachable" in reason_lower
+                or "not connected" in reason_lower
+                or "disconnected" in reason_lower
+            )
             if "agent" in reason_lower and is_offline:
                 return AuditOutcome.BLOCKED_AGENT_UNAVAILABLE
             if "error" in reason_lower or "unauthorized" in reason_lower or "token" in reason_lower:
@@ -383,4 +398,6 @@ class AuditRecord(BaseModel):
             execution_outcome=execution_outcome,
             failure_reason=failure_reason or request.reason,
             arguments_redacted=request.get_redacted_arguments(sensitive_keys),
+            client_id=request.client_id,
+            session_id=request.session_id,
         )

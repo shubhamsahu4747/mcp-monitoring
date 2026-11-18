@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "desktop":
         from app.desktop.application import run_desktop
 
-        return run_desktop()
+        return run_desktop(remote_url=args.remote_url)
     elif args.command == "test-client":
         from app.gateway.interactive_client import run_client_demo
 
@@ -200,7 +200,15 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"  {msg}\n\n")
         return 0 if success else 1
     elif args.command == "remote-gateway":
-        sys.stderr.write("[INFO] Remote Gateway launching...\n")
+        import uvicorn
+
+        from app.remote.app import create_remote_app
+
+        remote_app = create_remote_app()
+        sys.stderr.write(
+            f"[INFO] Launching Walled AI Remote MCP Gateway on {args.host}:{args.port}...\n"
+        )
+        uvicorn.run(remote_app, host=args.host, port=args.port, log_level=args.log_level.lower())
         return 0
 
     return run_info()

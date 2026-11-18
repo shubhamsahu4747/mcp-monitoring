@@ -179,6 +179,8 @@ class UpstreamManager:
 
     async def stop(self) -> None:
         """Cleanly close the upstream session and terminate the subprocess."""
+        if not self._is_running and self._exit_stack is None:
+            return
         async with self._lock:
             if self._exit_stack:
                 logger.info("Stopping upstream connection to '%s'...", self.server_name)

@@ -72,6 +72,23 @@ class Settings(BaseSettings):
         default="change-this-secure-desktop-token-in-production",
         description="Authentication bearer token required for desktop agent WebSocket connections.",
     )
+    remote_client_api_key: str = Field(
+        default="walled-ai-remote-client-secret-key",
+        description="API key required for remote clients (Claude Web) accessing the MCP endpoint.",
+    )
+    rate_limit_per_minute: int = Field(
+        default=60,
+        ge=1,
+        description="Maximum allowed requests per minute per remote client IP or token.",
+    )
+    remote_cors_origins: str = Field(
+        default="*",
+        description="Allowed CORS origins for remote clients connecting to the gateway.",
+    )
+    remote_mode: str = Field(
+        default="development",
+        description="Operating mode: 'development' or 'production'.",
+    )
 
     # Diagnostics
     log_level: str = Field(
