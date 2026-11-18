@@ -350,4 +350,5 @@ def test_main_cli_modes() -> None:
     assert main(["local-proxy"]) == 0
     with patch("app.desktop.application.run_desktop", return_value=0):
         assert main(["desktop"]) == 0
-    assert main(["remote-gateway"]) == 0
+    with patch("uvicorn.run", return_value=None):
+        assert main(["remote-gateway"]) == 0

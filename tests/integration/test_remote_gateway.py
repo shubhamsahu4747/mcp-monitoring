@@ -83,7 +83,7 @@ class MockAgentWebSocket:
 
 
 class ManagedSessionRunner:
-    """Manages StreamableHTTPSessionManager lifecycle in a dedicated task to isolate cancel scopes."""
+    """Manages StreamableHTTPSessionManager lifecycle in a task to isolate cancel scopes."""
 
     def __init__(self, server: RemoteMCPGatewayServer) -> None:
         self.server = server
