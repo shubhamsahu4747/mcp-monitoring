@@ -26,15 +26,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     decision_timestamp TEXT,
     execution_outcome TEXT,
     failure_reason TEXT,
-    arguments_redacted TEXT NOT NULL,
-    client_id TEXT,
-    session_id TEXT
+    arguments_redacted TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs (timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_server_tool ON audit_logs (server_name, tool_name);
 CREATE INDEX IF NOT EXISTS idx_audit_decision ON audit_logs (decision);
-CREATE INDEX IF NOT EXISTS idx_audit_client_session ON audit_logs (client_id, session_id);
 """
 
 
@@ -57,9 +54,22 @@ class DatabaseManager:
             yield conn
 
     async def initialize_schema(self) -> None:
-        """Initialize the SQLite schema (tables and indices)."""
+        """Initialize the SQLite schema (tables, columns, and indices)."""
         async with self.connection() as conn:
             await conn.executescript(SCHEMA_SQL)
+            # Inspect existing columns and safely migrate missing columns
+            async with conn.execute("PRAGMA table_info(audit_logs);") as cursor:
+                columns = [row[1] for row in await cursor.fetchall()]
+
+            if "client_id" not in columns:
+                await conn.execute("ALTER TABLE audit_logs ADD COLUMN client_id TEXT;")
+            if "session_id" not in columns:
+                await conn.execute("ALTER TABLE audit_logs ADD COLUMN session_id TEXT;")
+
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_client_session "
+                "ON audit_logs (client_id, session_id);"
+            )
             await conn.commit()
             logger.debug("Database schema initialized at %s", self.db_path)
 

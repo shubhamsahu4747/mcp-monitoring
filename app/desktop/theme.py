@@ -174,35 +174,47 @@ QWidget#centralWidget {{
     background-color: {COLOR_BG_SECONDARY};
 }}
 
+/* Header Banner */
+QFrame#headerBanner {{
+    background-color: {COLOR_BG_DARK};
+    border-radius: 10px;
+    padding: 14px 20px;
+    border: 1px solid #1E293B;
+}}
+
 /* Stat Metric Cards */
 QFrame#statCard {{
     background-color: {COLOR_BG_PRIMARY};
     border: 1px solid {COLOR_BORDER};
     border-radius: 8px;
-    padding: 12px 14px;
+    padding: 14px 16px;
 }}
 
 QFrame#statCard:hover {{
     border-color: {COLOR_BORDER_STRONG};
+    background-color: #FAFAFA;
 }}
 
 QLabel#statTitle {{
-    color: {COLOR_TEXT_SECONDARY};
+    color: #64748B;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
 }}
 
 QLabel#statValue {{
     color: {COLOR_TEXT_PRIMARY};
-    font-size: 20px;
-    font-weight: 700;
+    font-size: 24px;
+    font-weight: 800;
+    margin-top: 2px;
+    margin-bottom: 2px;
 }}
 
 QLabel#statSub {{
     color: {COLOR_TEXT_MUTED};
     font-size: 11px;
+    font-weight: 500;
 }}
 
 /* Tab View & Panes */
@@ -214,7 +226,7 @@ QTabWidget::pane {{
     background-color: {COLOR_BG_PRIMARY};
     border: 1px solid {COLOR_BORDER};
     border-radius: 8px;
-    padding: 10px;
+    padding: 12px;
     top: -1px;
 }}
 
@@ -223,13 +235,13 @@ QTabBar {{
 }}
 
 QTabBar::tab {{
-    background-color: #E2E8F0;
-    color: {COLOR_TEXT_SECONDARY};
+    background-color: #F1F5F9;
+    color: #64748B;
     font-weight: 600;
     font-size: 12px;
-    padding: 9px 22px;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
+    padding: 10px 24px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
     border: 1px solid #CBD5E1;
     border-bottom: none;
     margin-right: 4px;
@@ -239,12 +251,12 @@ QTabBar::tab:selected {{
     background-color: {COLOR_BG_PRIMARY};
     color: {COLOR_BRAND_PRIMARY};
     font-weight: 700;
-    border-top: 2px solid {COLOR_BRAND_PRIMARY};
+    border-top: 3px solid {COLOR_BRAND_PRIMARY};
     border-bottom: 1px solid {COLOR_BG_PRIMARY};
 }}
 
 QTabBar::tab:hover:!selected {{
-    background-color: #CBD5E1;
+    background-color: #E2E8F0;
     color: {COLOR_TEXT_PRIMARY};
 }}
 
@@ -256,7 +268,7 @@ QWidget#pendingTab, QWidget#auditTab {{
 QLabel#sectionHeaderLabel {{
     color: {COLOR_TEXT_PRIMARY};
     font-weight: 700;
-    font-size: 14px;
+    font-size: 15px;
     background-color: transparent;
 }}
 
@@ -285,8 +297,8 @@ QPushButton#primaryButton {{
     background-color: {COLOR_BRAND_PRIMARY};
     color: white;
     border: none;
-    border-radius: 5px;
-    padding: 6px 16px;
+    border-radius: 6px;
+    padding: 7px 18px;
     font-weight: 600;
     font-size: 12px;
 }}
@@ -299,8 +311,8 @@ QPushButton#secondaryButton {{
     background-color: {COLOR_BG_TERTIARY};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid #CBD5E1;
-    border-radius: 5px;
-    padding: 6px 14px;
+    border-radius: 6px;
+    padding: 7px 16px;
     font-weight: 600;
     font-size: 12px;
 }}
@@ -314,8 +326,8 @@ QPushButton#secondaryButton:hover {{
 QLineEdit#searchInput {{
     background-color: white;
     border: 1px solid {COLOR_BORDER};
-    border-radius: 5px;
-    padding: 5px 10px;
+    border-radius: 6px;
+    padding: 6px 12px;
     font-size: 12px;
     color: {COLOR_TEXT_PRIMARY};
 }}
@@ -325,32 +337,47 @@ QLineEdit#searchInput:focus {{
 }}
 
 /* Tables */
+QTableCornerButton::section {{
+    background-color: #F8FAFC;
+    border: none;
+}}
+
+QHeaderView {{
+    background-color: #F8FAFC;
+    border: none;
+}}
+
 QHeaderView::section {{
-    background-color: {COLOR_BG_TERTIARY};
-    color: {COLOR_TEXT_SECONDARY};
-    font-weight: 600;
-    font-size: 12px;
-    padding: 8px;
-    border: 1px solid {COLOR_BORDER};
+    background-color: #F8FAFC;
+    color: #475569;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 10px 12px;
+    border: none;
+    border-bottom: 2px solid #E2E8F0;
 }}
 
 QTableWidget {{
     background-color: {COLOR_BG_PRIMARY};
+    alternate-background-color: #F8FAFC;
     border: 1px solid {COLOR_BORDER};
-    border-radius: 6px;
-    gridline-color: {COLOR_BORDER};
+    border-radius: 8px;
     font-size: 12px;
     color: {COLOR_TEXT_PRIMARY};
+    outline: none;
 }}
 
 QTableWidget::item {{
-    padding: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #F1F5F9;
     color: {COLOR_TEXT_PRIMARY};
 }}
 
 QTableWidget::item:selected {{
     background-color: #E0F2FE;
-    color: {COLOR_TEXT_PRIMARY};
+    color: #0369A1;
 }}
 
 QStatusBar {{
@@ -358,6 +385,6 @@ QStatusBar {{
     color: {COLOR_TEXT_SECONDARY};
     border-top: 1px solid {COLOR_BORDER};
     font-size: 11px;
-    padding: 4px 8px;
+    padding: 5px 10px;
 }}
 """
