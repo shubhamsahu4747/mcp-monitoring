@@ -164,6 +164,83 @@ QMainWindow {{
     font-family: {FONT_FAMILY_SANS};
 }}
 
+QWidget#centralWidget {{
+    background-color: {COLOR_BG_SECONDARY};
+}}
+
+QTabWidget {{
+    background-color: transparent;
+}}
+
+QTabWidget::pane {{
+    background-color: {COLOR_BG_PRIMARY};
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 8px;
+    padding: 6px;
+    top: -1px;
+}}
+
+QTabBar {{
+    background-color: transparent;
+}}
+
+QTabBar::tab {{
+    background-color: #E2E8F0;
+    color: {COLOR_TEXT_SECONDARY};
+    font-weight: 600;
+    font-size: 12px;
+    padding: 8px 18px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border: 1px solid #CBD5E1;
+    border-bottom: none;
+    margin-right: 4px;
+}}
+
+QTabBar::tab:selected {{
+    background-color: {COLOR_BG_PRIMARY};
+    color: {COLOR_BRAND_PRIMARY};
+    font-weight: 700;
+    border-top: 2px solid {COLOR_BRAND_PRIMARY};
+    border-bottom: 1px solid {COLOR_BG_PRIMARY};
+}}
+
+QTabBar::tab:hover:!selected {{
+    background-color: #CBD5E1;
+    color: {COLOR_TEXT_PRIMARY};
+}}
+
+QWidget#pendingTab, QWidget#auditTab {{
+    background-color: {COLOR_BG_PRIMARY};
+    border-radius: 6px;
+}}
+
+QLabel#queueHeaderLabel, QLabel#auditHeaderLabel {{
+    color: {COLOR_TEXT_PRIMARY};
+    font-weight: 700;
+    font-size: 13px;
+    background-color: transparent;
+}}
+
+QFrame#emptyStateFrame {{
+    background-color: {COLOR_BG_SECONDARY};
+    border: 1px dashed {COLOR_BORDER};
+    border-radius: 8px;
+    padding: 40px 20px;
+}}
+
+QLabel#emptyStateTitle {{
+    color: {COLOR_TEXT_PRIMARY};
+    font-size: 15px;
+    font-weight: 700;
+}}
+
+QLabel#emptyStateSubtitle {{
+    color: {COLOR_TEXT_SECONDARY};
+    font-size: 12px;
+    line-height: 1.5;
+}}
+
 QHeaderView::section {{
     background-color: {COLOR_BG_TERTIARY};
     color: {COLOR_TEXT_SECONDARY};
@@ -182,6 +259,11 @@ QTableWidget {{
     color: {COLOR_TEXT_PRIMARY};
 }}
 
+QTableWidget::item {{
+    padding: 6px;
+    color: {COLOR_TEXT_PRIMARY};
+}}
+
 QTableWidget::item:selected {{
     background-color: #E0F2FE;
     color: {COLOR_TEXT_PRIMARY};
@@ -192,5 +274,6 @@ QStatusBar {{
     color: {COLOR_TEXT_SECONDARY};
     border-top: 1px solid {COLOR_BORDER};
     font-size: 11px;
+    padding: 4px 8px;
 }}
 """

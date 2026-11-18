@@ -30,7 +30,6 @@ from app.desktop.theme import (
     COLOR_BRAND_PRIMARY,
     COLOR_TEXT_LIGHT,
     COLOR_TEXT_MUTED,
-    COLOR_TEXT_PRIMARY,
     MAIN_WINDOW_STYLESHEET,
 )
 from app.models.requests import AuditRecord, AuthorizationRequest, AuthorizationStatus
@@ -66,6 +65,7 @@ class MainWindow(QMainWindow):
     def _setup_ui(self) -> None:
         """Construct the main window layout with tabs for Pending Queue and Audit History."""
         central_widget = QWidget()
+        central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(16, 16, 16, 16)
@@ -102,24 +102,50 @@ class MainWindow(QMainWindow):
 
         # 2. Main Tab View
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet(
-            f"QTabBar::tab {{ font-weight: 600; padding: 8px 16px; font-size: 12px; }} "
-            f"QTabBar::tab:selected {{ color: {COLOR_BRAND_PRIMARY}; }}"
-        )
+        self.tabs.setObjectName("mainTabWidget")
 
         # Tab 1: Pending Queue
         self.pending_tab = QWidget()
+        self.pending_tab.setObjectName("pendingTab")
         pending_layout = QVBoxLayout(self.pending_tab)
-        pending_layout.setContentsMargins(8, 12, 8, 8)
+        pending_layout.setContentsMargins(12, 12, 12, 12)
+        pending_layout.setSpacing(10)
 
         pending_header = QHBoxLayout()
         self.lbl_queue_count = QLabel("Active Pending Authorizations (0)")
-        self.lbl_queue_count.setStyleSheet(
-            f"font-weight: 700; font-size: 13px; color: {COLOR_TEXT_PRIMARY};"
-        )
+        self.lbl_queue_count.setObjectName("queueHeaderLabel")
         pending_header.addWidget(self.lbl_queue_count)
         pending_header.addStretch()
         pending_layout.addLayout(pending_header)
+
+        # Empty State Placeholder Frame
+        self.empty_state_frame = QFrame()
+        self.empty_state_frame.setObjectName("emptyStateFrame")
+        empty_layout = QVBoxLayout(self.empty_state_frame)
+        empty_layout.setContentsMargins(24, 40, 24, 40)
+        empty_layout.setSpacing(10)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        empty_icon = QLabel("🛡️")
+        empty_icon.setStyleSheet("font-size: 36px; background: transparent;")
+        empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_icon)
+
+        empty_title = QLabel("Security Gateway Active — Fail-Closed Enforced")
+        empty_title.setObjectName("emptyStateTitle")
+        empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_title)
+
+        empty_subtitle = QLabel(
+            "No authorization requests currently pending in queue.\n"
+            "Tool invocations initiated by Claude Desktop or MCP clients "
+            "will trigger an always-on-top authorization dialog and appear here."
+        )
+        empty_subtitle.setObjectName("emptyStateSubtitle")
+        empty_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_subtitle)
+
+        pending_layout.addWidget(self.empty_state_frame)
 
         self.table_pending = QTableWidget(0, 6)
         self.table_pending.setHorizontalHeaderLabels([
@@ -151,20 +177,21 @@ class MainWindow(QMainWindow):
         self.table_pending.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table_pending.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table_pending.cellDoubleClicked.connect(self._on_table_row_double_clicked)
+        self.table_pending.hide()  # Initially hidden until requests arrive
         pending_layout.addWidget(self.table_pending)
 
         self.tabs.addTab(self.pending_tab, "Active Requests (Queue)")
 
         # Tab 2: Audit History
         self.audit_tab = QWidget()
+        self.audit_tab.setObjectName("auditTab")
         audit_layout = QVBoxLayout(self.audit_tab)
-        audit_layout.setContentsMargins(8, 12, 8, 8)
+        audit_layout.setContentsMargins(12, 12, 12, 12)
+        audit_layout.setSpacing(10)
 
         audit_header = QHBoxLayout()
         lbl_audit_title = QLabel("Security Audit Log (SQLite)")
-        lbl_audit_title.setStyleSheet(
-            f"font-weight: 700; font-size: 13px; color: {COLOR_TEXT_PRIMARY};"
-        )
+        lbl_audit_title.setObjectName("auditHeaderLabel")
         audit_header.addWidget(lbl_audit_title)
         audit_header.addStretch()
 
@@ -231,10 +258,17 @@ class MainWindow(QMainWindow):
     def _refresh_pending_table(self) -> None:
         """Re-render the active pending table."""
         self.table_pending.setRowCount(0)
-        self.lbl_queue_count.setText(
-            f"Active Pending Authorizations ({len(self._pending_requests)})"
-        )
-        self.tabs.setTabText(0, f"Active Requests ({len(self._pending_requests)})")
+        num_pending = len(self._pending_requests)
+        self.lbl_queue_count.setText(f"Active Pending Authorizations ({num_pending})")
+        self.tabs.setTabText(0, f"Active Requests ({num_pending})")
+
+        if num_pending == 0:
+            self.empty_state_frame.show()
+            self.table_pending.hide()
+            return
+
+        self.empty_state_frame.hide()
+        self.table_pending.show()
 
         for row, req in enumerate(self._pending_requests.values()):
             self.table_pending.insertRow(row)
