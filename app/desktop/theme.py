@@ -241,6 +241,25 @@ QLabel#emptyStateSubtitle {{
     line-height: 1.5;
 }}
 
+QPushButton#refreshButton {{
+    background-color: {COLOR_BG_TERTIARY};
+    color: {COLOR_TEXT_PRIMARY};
+    border: 1px solid #CBD5E1;
+    border-radius: 4px;
+    padding: 5px 14px;
+    font-weight: 600;
+    font-size: 11px;
+}}
+
+QPushButton#refreshButton:hover {{
+    background-color: #E2E8F0;
+    border-color: #94A3B8;
+}}
+
+QPushButton#refreshButton:pressed {{
+    background-color: #CBD5E1;
+}}
+
 QHeaderView::section {{
     background-color: {COLOR_BG_TERTIARY};
     color: {COLOR_TEXT_SECONDARY};

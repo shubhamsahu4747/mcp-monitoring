@@ -196,13 +196,39 @@ class MainWindow(QMainWindow):
         audit_header.addStretch()
 
         btn_refresh = QPushButton("↻ Refresh Log")
-        btn_refresh.setStyleSheet(
-            "padding: 4px 12px; font-weight: 600; font-size: 11px; "
-            "background-color: white; border: 1px solid #CBD5E1; border-radius: 4px;"
-        )
+        btn_refresh.setObjectName("refreshButton")
+        btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_refresh.clicked.connect(lambda: self.refresh_audit_requested.emit())
         audit_header.addWidget(btn_refresh)
         audit_layout.addLayout(audit_header)
+
+        # Empty State Placeholder Frame for Audit Tab
+        self.audit_empty_frame = QFrame()
+        self.audit_empty_frame.setObjectName("emptyStateFrame")
+        audit_empty_layout = QVBoxLayout(self.audit_empty_frame)
+        audit_empty_layout.setContentsMargins(24, 40, 24, 40)
+        audit_empty_layout.setSpacing(10)
+        audit_empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        audit_empty_icon = QLabel("📋")
+        audit_empty_icon.setStyleSheet("font-size: 36px; background: transparent;")
+        audit_empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        audit_empty_layout.addWidget(audit_empty_icon)
+
+        audit_empty_title = QLabel("No Audit Records Found")
+        audit_empty_title.setObjectName("emptyStateTitle")
+        audit_empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        audit_empty_layout.addWidget(audit_empty_title)
+
+        audit_empty_subtitle = QLabel(
+            "Every MCP tool call intercepted and decided (Approved, Rejected, or Timed Out)\n"
+            "will be durably persisted to SQLite and displayed in this audit log."
+        )
+        audit_empty_subtitle.setObjectName("emptyStateSubtitle")
+        audit_empty_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        audit_empty_layout.addWidget(audit_empty_subtitle)
+
+        audit_layout.addWidget(self.audit_empty_frame)
 
         self.table_audit = QTableWidget(0, 6)
         self.table_audit.setHorizontalHeaderLabels([
@@ -228,6 +254,7 @@ class MainWindow(QMainWindow):
         )
         self.table_audit.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table_audit.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table_audit.hide()  # Initially hidden until records arrive
         audit_layout.addWidget(self.table_audit)
 
         self.tabs.addTab(self.audit_tab, "Audit History")
@@ -329,6 +356,16 @@ class MainWindow(QMainWindow):
     def update_audit_records(self, records: List[AuditRecord]) -> None:
         """Render recent audit records into the audit log table."""
         self.table_audit.setRowCount(0)
+
+        if not records:
+            self.audit_empty_frame.show()
+            self.table_audit.hide()
+            self.status_bar.showMessage("Audit log ready. Total records loaded: 0")
+            return
+
+        self.audit_empty_frame.hide()
+        self.table_audit.show()
+
         for row, rec in enumerate(records):
             self.table_audit.insertRow(row)
 
