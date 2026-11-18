@@ -74,9 +74,36 @@ class WalledAIDesktopApp:
         self.main_window.refresh_audit_requested.connect(
             lambda: asyncio.create_task(self.refresh_audit_log())
         )
+        self.main_window.trigger_demo_requested.connect(
+            lambda: asyncio.create_task(self._trigger_demo_request())
+        )
 
         # Hook authorization manager to desktop UI
         self.auth_mgr.set_notification_hook(self.on_authorization_request)
+
+    async def _trigger_demo_request(self) -> None:
+        """Trigger a safe demo tool authorization request for live UI testing."""
+        logger.info("Triggering demo tool authorization request from UI button...")
+        demo_req = AuthorizationRequest(
+            server_name="Safe Mock MCP Server",
+            tool_name="read_demo_file",
+            arguments={
+                "filename": "confidential_financials_2026.xlsx",
+                "access_token": "bearer-eyJhbGciOiJIUzI1NiIsIn...",
+                "user_credentials": {
+                    "admin_password": "super-secret-password-xyz",
+                    "role": "auditor",
+                },
+                "parameters": {
+                    "format": "csv",
+                    "max_rows": 500,
+                },
+            },
+        )
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[AuthorizationDecision] = loop.create_future()
+        await self.auth_mgr.registry.register(demo_req, future)
+        await self.on_authorization_request(demo_req)
 
     # -------------------------------------------------------------------------
     # UI Presentation & Actions

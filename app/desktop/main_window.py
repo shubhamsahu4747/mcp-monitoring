@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QPushButton,
     QStatusBar,
@@ -45,6 +46,7 @@ class MainWindow(QMainWindow):
     quick_approve_requested = Signal(str)   # request_id
     quick_reject_requested = Signal(str)    # request_id
     refresh_audit_requested = Signal()      # user clicked refresh audit log
+    trigger_demo_requested = Signal()       # user clicked demo trigger button
 
     def __init__(
         self,
@@ -54,37 +56,39 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.on_exit_callback = on_exit_callback
         self._pending_requests: Dict[str, AuthorizationRequest] = {}
+        self._audit_records: List[AuditRecord] = []
 
         self.setWindowTitle("Walled AI – MCP Security Gateway")
-        self.setMinimumSize(850, 600)
-        self.resize(950, 680)
+        self.setMinimumSize(920, 640)
+        self.resize(1020, 720)
         self.setStyleSheet(MAIN_WINDOW_STYLESHEET)
 
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        """Construct the main window layout with tabs for Pending Queue and Audit History."""
+        """Construct the main window layout with KPI cards, tabs, and tables."""
         central_widget = QWidget()
         central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setSpacing(14)
 
         # 1. Header Banner
         header = QFrame()
         header.setStyleSheet(
-            f"background-color: {COLOR_BG_DARK}; border-radius: 8px; padding: 12px 16px;"
+            f"background-color: {COLOR_BG_DARK}; border-radius: 8px; padding: 12px 18px;"
         )
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 8, 12, 8)
+        header_layout.setContentsMargins(0, 0, 0, 0)
 
         title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
         title_lbl = QLabel("🛡️ WALLED AI MCP SECURITY GATEWAY")
         title_lbl.setStyleSheet(
             f"color: {COLOR_TEXT_LIGHT}; font-weight: 700; font-size: 15px; letter-spacing: 0.5px;"
         )
-        subtitle_lbl = QLabel("Active Protocol Interception & Explicit Desktop Authorization")
+        subtitle_lbl = QLabel("Active Protocol Interception & Explicit User Authorization")
         subtitle_lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 11px;")
         title_layout.addWidget(title_lbl)
         title_layout.addWidget(subtitle_lbl)
@@ -92,15 +96,105 @@ class MainWindow(QMainWindow):
 
         header_layout.addStretch()
 
-        status_pill = QLabel("● GATEWAY ACTIVE (ENFORCING)")
+        # Status Badges
+        badge_layout = QHBoxLayout()
+        badge_layout.setSpacing(8)
+
+        upstream_badge = QLabel("🔌 Upstream: Safe Mock (stdio)")
+        upstream_badge.setStyleSheet(
+            "background-color: #1E293B; color: #94A3B8; font-size: 11px; "
+            "font-weight: 500; padding: 4px 10px; border-radius: 12px; border: 1px solid #334155;"
+        )
+        badge_layout.addWidget(upstream_badge)
+
+        status_pill = QLabel("● GATEWAY ACTIVE")
         status_pill.setStyleSheet(
             f"background-color: {COLOR_BADGE_SECURITY}; color: white; "
-            f"font-weight: 700; font-size: 11px; padding: 6px 12px; border-radius: 12px;"
+            f"font-weight: 700; font-size: 11px; padding: 4px 12px; border-radius: 12px;"
         )
-        header_layout.addWidget(status_pill)
+        badge_layout.addWidget(status_pill)
+        header_layout.addLayout(badge_layout)
+
         main_layout.addWidget(header)
 
-        # 2. Main Tab View
+        # 2. KPI / Metrics Summary Bar (4 Cards)
+        kpi_layout = QHBoxLayout()
+        kpi_layout.setSpacing(12)
+
+        # Card 1: Active Pending
+        card_pending = QFrame()
+        card_pending.setObjectName("statCard")
+        cp_layout = QVBoxLayout(card_pending)
+        cp_layout.setContentsMargins(0, 0, 0, 0)
+        cp_layout.setSpacing(2)
+        lbl_cp_title = QLabel("Pending Approvals")
+        lbl_cp_title.setObjectName("statTitle")
+        self.lbl_stat_pending = QLabel("0")
+        self.lbl_stat_pending.setObjectName("statValue")
+        self.lbl_stat_pending.setStyleSheet(f"color: {COLOR_BRAND_PRIMARY};")
+        lbl_cp_sub = QLabel("Awaiting user decision")
+        lbl_cp_sub.setObjectName("statSub")
+        cp_layout.addWidget(lbl_cp_title)
+        cp_layout.addWidget(self.lbl_stat_pending)
+        cp_layout.addWidget(lbl_cp_sub)
+        kpi_layout.addWidget(card_pending)
+
+        # Card 2: Audited Invocations
+        card_audit = QFrame()
+        card_audit.setObjectName("statCard")
+        ca_layout = QVBoxLayout(card_audit)
+        ca_layout.setContentsMargins(0, 0, 0, 0)
+        ca_layout.setSpacing(2)
+        lbl_ca_title = QLabel("Audited Invocations")
+        lbl_ca_title.setObjectName("statTitle")
+        self.lbl_stat_audit = QLabel("0")
+        self.lbl_stat_audit.setObjectName("statValue")
+        lbl_ca_sub = QLabel("Persisted to SQLite")
+        lbl_ca_sub.setObjectName("statSub")
+        ca_layout.addWidget(lbl_ca_title)
+        ca_layout.addWidget(self.lbl_stat_audit)
+        ca_layout.addWidget(lbl_ca_sub)
+        kpi_layout.addWidget(card_audit)
+
+        # Card 3: Security Policy
+        card_policy = QFrame()
+        card_policy.setObjectName("statCard")
+        cpol_layout = QVBoxLayout(card_policy)
+        cpol_layout.setContentsMargins(0, 0, 0, 0)
+        cpol_layout.setSpacing(2)
+        lbl_cpol_title = QLabel("Enforcement Mode")
+        lbl_cpol_title.setObjectName("statTitle")
+        lbl_cpol_val = QLabel("Fail-Closed")
+        lbl_cpol_val.setObjectName("statValue")
+        lbl_cpol_val.setStyleSheet("color: #0D9488;")
+        lbl_cpol_sub = QLabel("Default block on timeout")
+        lbl_cpol_sub.setObjectName("statSub")
+        cpol_layout.addWidget(lbl_cpol_title)
+        cpol_layout.addWidget(lbl_cpol_val)
+        cpol_layout.addWidget(lbl_cpol_sub)
+        kpi_layout.addWidget(card_policy)
+
+        # Card 4: Timeout Threshold
+        card_timeout = QFrame()
+        card_timeout.setObjectName("statCard")
+        ct_layout = QVBoxLayout(card_timeout)
+        ct_layout.setContentsMargins(0, 0, 0, 0)
+        ct_layout.setSpacing(2)
+        lbl_ct_title = QLabel("Authorization Timeout")
+        lbl_ct_title.setObjectName("statTitle")
+        self.lbl_stat_timeout = QLabel("30.0s")
+        self.lbl_stat_timeout.setObjectName("statValue")
+        self.lbl_stat_timeout.setStyleSheet("color: #D97706;")
+        lbl_ct_sub = QLabel("Per-request countdown")
+        lbl_ct_sub.setObjectName("statSub")
+        ct_layout.addWidget(lbl_ct_title)
+        ct_layout.addWidget(self.lbl_stat_timeout)
+        ct_layout.addWidget(lbl_ct_sub)
+        kpi_layout.addWidget(card_timeout)
+
+        main_layout.addLayout(kpi_layout)
+
+        # 3. Main Tab View
         self.tabs = QTabWidget()
         self.tabs.setObjectName("mainTabWidget")
 
@@ -108,42 +202,57 @@ class MainWindow(QMainWindow):
         self.pending_tab = QWidget()
         self.pending_tab.setObjectName("pendingTab")
         pending_layout = QVBoxLayout(self.pending_tab)
-        pending_layout.setContentsMargins(12, 12, 12, 12)
-        pending_layout.setSpacing(10)
+        pending_layout.setContentsMargins(14, 14, 14, 14)
+        pending_layout.setSpacing(12)
 
         pending_header = QHBoxLayout()
-        self.lbl_queue_count = QLabel("Active Pending Authorizations (0)")
-        self.lbl_queue_count.setObjectName("queueHeaderLabel")
+        self.lbl_queue_count = QLabel("Active Authorizations Queue (0)")
+        self.lbl_queue_count.setObjectName("sectionHeaderLabel")
         pending_header.addWidget(self.lbl_queue_count)
         pending_header.addStretch()
+
+        btn_demo_trigger = QPushButton("⚡ Test Authorization Popup")
+        btn_demo_trigger.setObjectName("primaryButton")
+        btn_demo_trigger.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_demo_trigger.clicked.connect(lambda: self.trigger_demo_requested.emit())
+        pending_header.addWidget(btn_demo_trigger)
         pending_layout.addLayout(pending_header)
 
         # Empty State Placeholder Frame
         self.empty_state_frame = QFrame()
         self.empty_state_frame.setObjectName("emptyStateFrame")
         empty_layout = QVBoxLayout(self.empty_state_frame)
-        empty_layout.setContentsMargins(24, 40, 24, 40)
-        empty_layout.setSpacing(10)
+        empty_layout.setContentsMargins(30, 40, 30, 40)
+        empty_layout.setSpacing(12)
         empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         empty_icon = QLabel("🛡️")
-        empty_icon.setStyleSheet("font-size: 36px; background: transparent;")
+        empty_icon.setStyleSheet(
+            "font-size: 32px; background-color: #CCFBF1; border-radius: 28px; padding: 12px;"
+        )
+        empty_icon.setFixedSize(56, 56)
         empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_layout.addWidget(empty_icon)
+        empty_layout.addWidget(empty_icon, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        empty_title = QLabel("Security Gateway Active — Fail-Closed Enforced")
+        empty_title = QLabel("Security Gateway Active & Monitoring")
         empty_title.setObjectName("emptyStateTitle")
         empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_title)
 
         empty_subtitle = QLabel(
-            "No authorization requests currently pending in queue.\n"
-            "Tool invocations initiated by Claude Desktop or MCP clients "
-            "will trigger an always-on-top authorization dialog and appear here."
+            "No tool authorization requests are currently pending.\n"
+            "When Claude Desktop or an MCP client executes an upstream tool,\n"
+            "an always-on-top authorization dialog will pop up immediately."
         )
         empty_subtitle.setObjectName("emptyStateSubtitle")
         empty_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_subtitle)
+
+        btn_empty_demo = QPushButton("⚡ Trigger Demo Tool Request")
+        btn_empty_demo.setObjectName("secondaryButton")
+        btn_empty_demo.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_empty_demo.clicked.connect(lambda: self.trigger_demo_requested.emit())
+        empty_layout.addWidget(btn_empty_demo, alignment=Qt.AlignmentFlag.AlignCenter)
 
         pending_layout.addWidget(self.empty_state_frame)
 
@@ -180,23 +289,30 @@ class MainWindow(QMainWindow):
         self.table_pending.hide()  # Initially hidden until requests arrive
         pending_layout.addWidget(self.table_pending)
 
-        self.tabs.addTab(self.pending_tab, "Active Requests (Queue)")
+        self.tabs.addTab(self.pending_tab, "⚡ Active Requests (0)")
 
         # Tab 2: Audit History
         self.audit_tab = QWidget()
         self.audit_tab.setObjectName("auditTab")
         audit_layout = QVBoxLayout(self.audit_tab)
-        audit_layout.setContentsMargins(12, 12, 12, 12)
-        audit_layout.setSpacing(10)
+        audit_layout.setContentsMargins(14, 14, 14, 14)
+        audit_layout.setSpacing(12)
 
         audit_header = QHBoxLayout()
-        lbl_audit_title = QLabel("Security Audit Log (SQLite)")
-        lbl_audit_title.setObjectName("auditHeaderLabel")
+        lbl_audit_title = QLabel("Security Audit History (SQLite)")
+        lbl_audit_title.setObjectName("sectionHeaderLabel")
         audit_header.addWidget(lbl_audit_title)
         audit_header.addStretch()
 
+        self.search_input = QLineEdit()
+        self.search_input.setObjectName("searchInput")
+        self.search_input.setPlaceholderText("Filter audit logs...")
+        self.search_input.setFixedWidth(200)
+        self.search_input.textChanged.connect(self._on_audit_search_changed)
+        audit_header.addWidget(self.search_input)
+
         btn_refresh = QPushButton("↻ Refresh Log")
-        btn_refresh.setObjectName("refreshButton")
+        btn_refresh.setObjectName("secondaryButton")
         btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_refresh.clicked.connect(lambda: self.refresh_audit_requested.emit())
         audit_header.addWidget(btn_refresh)
@@ -206,14 +322,17 @@ class MainWindow(QMainWindow):
         self.audit_empty_frame = QFrame()
         self.audit_empty_frame.setObjectName("emptyStateFrame")
         audit_empty_layout = QVBoxLayout(self.audit_empty_frame)
-        audit_empty_layout.setContentsMargins(24, 40, 24, 40)
-        audit_empty_layout.setSpacing(10)
+        audit_empty_layout.setContentsMargins(30, 40, 30, 40)
+        audit_empty_layout.setSpacing(12)
         audit_empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         audit_empty_icon = QLabel("📋")
-        audit_empty_icon.setStyleSheet("font-size: 36px; background: transparent;")
+        audit_empty_icon.setStyleSheet(
+            "font-size: 32px; background-color: #F1F5F9; border-radius: 28px; padding: 12px;"
+        )
+        audit_empty_icon.setFixedSize(56, 56)
         audit_empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        audit_empty_layout.addWidget(audit_empty_icon)
+        audit_empty_layout.addWidget(audit_empty_icon, alignment=Qt.AlignmentFlag.AlignCenter)
 
         audit_empty_title = QLabel("No Audit Records Found")
         audit_empty_title.setObjectName("emptyStateTitle")
@@ -222,7 +341,7 @@ class MainWindow(QMainWindow):
 
         audit_empty_subtitle = QLabel(
             "Every MCP tool call intercepted and decided (Approved, Rejected, or Timed Out)\n"
-            "will be durably persisted to SQLite and displayed in this audit log."
+            "will be durably persisted to SQLite and displayed here."
         )
         audit_empty_subtitle.setObjectName("emptyStateSubtitle")
         audit_empty_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -257,10 +376,10 @@ class MainWindow(QMainWindow):
         self.table_audit.hide()  # Initially hidden until records arrive
         audit_layout.addWidget(self.table_audit)
 
-        self.tabs.addTab(self.audit_tab, "Audit History")
+        self.tabs.addTab(self.audit_tab, "📋 Audit History")
         main_layout.addWidget(self.tabs)
 
-        # 3. Status Bar
+        # 4. Status Bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(
@@ -283,11 +402,12 @@ class MainWindow(QMainWindow):
             self._refresh_pending_table()
 
     def _refresh_pending_table(self) -> None:
-        """Re-render the active pending table."""
+        """Re-render the active pending table and update KPI metrics."""
         self.table_pending.setRowCount(0)
         num_pending = len(self._pending_requests)
-        self.lbl_queue_count.setText(f"Active Pending Authorizations ({num_pending})")
-        self.tabs.setTabText(0, f"Active Requests ({num_pending})")
+        self.lbl_queue_count.setText(f"Active Authorizations Queue ({num_pending})")
+        self.tabs.setTabText(0, f"⚡ Active Requests ({num_pending})")
+        self.lbl_stat_pending.setText(str(num_pending))
 
         if num_pending == 0:
             self.empty_state_frame.show()
@@ -330,10 +450,12 @@ class MainWindow(QMainWindow):
             actions_layout.setSpacing(6)
 
             btn_inspect = QPushButton("Inspect")
+            btn_inspect.setObjectName("primaryButton")
             btn_inspect.setStyleSheet(
-                f"padding: 2px 8px; font-size: 11px; background-color: {COLOR_BRAND_PRIMARY}; "
-                f"color: white; border-radius: 3px;"
+                f"padding: 2px 10px; font-size: 11px; background-color: {COLOR_BRAND_PRIMARY}; "
+                f"color: white; border-radius: 4px;"
             )
+            btn_inspect.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_inspect.clicked.connect(
                 lambda _, rid=req.request_id: self.request_inspect_requested.emit(rid)
             )
@@ -350,11 +472,33 @@ class MainWindow(QMainWindow):
                 self.request_inspect_requested.emit(request_id)
 
     # -------------------------------------------------------------------------
-    # Audit Table Population
+    # Audit Table Population & Filtering
     # -------------------------------------------------------------------------
 
     def update_audit_records(self, records: List[AuditRecord]) -> None:
         """Render recent audit records into the audit log table."""
+        self._audit_records = records
+        self.lbl_stat_audit.setText(str(len(records)))
+        self._render_audit_table(records)
+
+    def _on_audit_search_changed(self, search_text: str) -> None:
+        """Filter audit table by search query in server, tool, or ID."""
+        query = search_text.strip().lower()
+        if not query:
+            self._render_audit_table(self._audit_records)
+            return
+
+        filtered = [
+            r for r in self._audit_records
+            if query in r.server_name.lower()
+            or query in r.tool_name.lower()
+            or query in r.request_id.lower()
+            or query in r.decision.value.lower()
+        ]
+        self._render_audit_table(filtered)
+
+    def _render_audit_table(self, records: List[AuditRecord]) -> None:
+        """Render given list of records to the audit table."""
         self.table_audit.setRowCount(0)
 
         if not records:
@@ -378,13 +522,15 @@ class MainWindow(QMainWindow):
             self.table_audit.setItem(row, 2, QTableWidgetItem(rec.tool_name))
 
             # Decision Badge
-            decision_item = QTableWidgetItem(rec.decision.value)
+            decision_item = QTableWidgetItem(f" {rec.decision.value} ")
             if rec.decision == AuthorizationStatus.APPROVED:
                 decision_item.setForeground(Qt.GlobalColor.darkGreen)
             elif rec.decision == AuthorizationStatus.REJECTED:
                 decision_item.setForeground(Qt.GlobalColor.red)
-            else:
+            elif rec.decision == AuthorizationStatus.TIMED_OUT:
                 decision_item.setForeground(Qt.GlobalColor.darkYellow)
+            else:
+                decision_item.setForeground(Qt.GlobalColor.gray)
             self.table_audit.setItem(row, 3, decision_item)
 
             # Execution Outcome
@@ -397,7 +543,7 @@ class MainWindow(QMainWindow):
             self.table_audit.setItem(row, 5, QTableWidgetItem(rec.request_id[:8] + "..."))
 
         self.status_bar.showMessage(
-            f"Audit log updated. Total records loaded: {len(records)}"
+            f"Audit log updated. Total records loaded: {len(self._audit_records)}"
         )
 
     # -------------------------------------------------------------------------
@@ -406,7 +552,6 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Closing main window hides to system tray rather than killing the security gateway."""
-        # Hide window to tray
         self.hide()
         event.ignore()
         logger.info("Main window minimized to system tray.")

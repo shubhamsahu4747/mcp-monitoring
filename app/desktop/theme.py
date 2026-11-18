@@ -7,10 +7,12 @@ COLOR_BG_PRIMARY = "#FFFFFF"
 COLOR_BG_SECONDARY = "#F8FAFC"  # Slate 50
 COLOR_BG_TERTIARY = "#F1F5F9"   # Slate 100
 COLOR_BG_DARK = "#0F172A"       # Slate 900
+COLOR_BG_DARK_CARD = "#1E293B"  # Slate 800
 COLOR_BG_CODE = "#1E293B"       # Slate 800
 
 COLOR_BORDER = "#E2E8F0"        # Slate 200
-COLOR_BORDER_FOCUS = "#3B82F6"  # Blue 500
+COLOR_BORDER_STRONG = "#CBD5E1" # Slate 300
+COLOR_BORDER_DARK = "#334155"   # Slate 700
 
 COLOR_TEXT_PRIMARY = "#0F172A"  # Slate 900
 COLOR_TEXT_SECONDARY = "#475569"# Slate 600
@@ -18,18 +20,22 @@ COLOR_TEXT_MUTED = "#94A3B8"    # Slate 400
 COLOR_TEXT_LIGHT = "#F8FAFC"    # Slate 50
 
 COLOR_BRAND_PRIMARY = "#0284C7" # Sky 600
-COLOR_BRAND_DARK = "#0369A1"    # Sky 700
+COLOR_BRAND_HOVER = "#0369A1"   # Sky 700
+COLOR_BRAND_LIGHT = "#E0F2FE"   # Sky 100
 
 COLOR_SUCCESS = "#16A34A"       # Green 600
 COLOR_SUCCESS_HOVER = "#15803D" # Green 700
 COLOR_SUCCESS_BG = "#DCFCE7"    # Green 100
+COLOR_SUCCESS_TEXT = "#15803D"
 
 COLOR_DANGER = "#DC2626"        # Red 600
 COLOR_DANGER_HOVER = "#B91C1C"  # Red 700
 COLOR_DANGER_BG = "#FEE2E2"     # Red 100
+COLOR_DANGER_TEXT = "#B91C1C"
 
 COLOR_WARNING = "#D97706"       # Amber 600
 COLOR_WARNING_BG = "#FEF3C7"    # Amber 100
+COLOR_WARNING_TEXT = "#B45309"
 
 COLOR_BADGE_SECURITY = "#0D9488"# Teal 600
 COLOR_BADGE_SECURITY_BG = "#CCFBF1"
@@ -75,7 +81,7 @@ QFrame#detailsCard {{
     background-color: {COLOR_BG_PRIMARY};
     border: 1px solid {COLOR_BORDER};
     border-radius: 8px;
-    padding: 12px;
+    padding: 14px;
 }}
 
 QLabel#metaLabel {{
@@ -168,6 +174,38 @@ QWidget#centralWidget {{
     background-color: {COLOR_BG_SECONDARY};
 }}
 
+/* Stat Metric Cards */
+QFrame#statCard {{
+    background-color: {COLOR_BG_PRIMARY};
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 8px;
+    padding: 12px 14px;
+}}
+
+QFrame#statCard:hover {{
+    border-color: {COLOR_BORDER_STRONG};
+}}
+
+QLabel#statTitle {{
+    color: {COLOR_TEXT_SECONDARY};
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}}
+
+QLabel#statValue {{
+    color: {COLOR_TEXT_PRIMARY};
+    font-size: 20px;
+    font-weight: 700;
+}}
+
+QLabel#statSub {{
+    color: {COLOR_TEXT_MUTED};
+    font-size: 11px;
+}}
+
+/* Tab View & Panes */
 QTabWidget {{
     background-color: transparent;
 }}
@@ -176,7 +214,7 @@ QTabWidget::pane {{
     background-color: {COLOR_BG_PRIMARY};
     border: 1px solid {COLOR_BORDER};
     border-radius: 8px;
-    padding: 6px;
+    padding: 10px;
     top: -1px;
 }}
 
@@ -189,7 +227,7 @@ QTabBar::tab {{
     color: {COLOR_TEXT_SECONDARY};
     font-weight: 600;
     font-size: 12px;
-    padding: 8px 18px;
+    padding: 9px 22px;
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
     border: 1px solid #CBD5E1;
@@ -215,18 +253,19 @@ QWidget#pendingTab, QWidget#auditTab {{
     border-radius: 6px;
 }}
 
-QLabel#queueHeaderLabel, QLabel#auditHeaderLabel {{
+QLabel#sectionHeaderLabel {{
     color: {COLOR_TEXT_PRIMARY};
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
     background-color: transparent;
 }}
 
+/* Empty State Card */
 QFrame#emptyStateFrame {{
     background-color: {COLOR_BG_SECONDARY};
-    border: 1px dashed {COLOR_BORDER};
+    border: 1px dashed {COLOR_BORDER_STRONG};
     border-radius: 8px;
-    padding: 40px 20px;
+    padding: 36px 20px;
 }}
 
 QLabel#emptyStateTitle {{
@@ -241,25 +280,51 @@ QLabel#emptyStateSubtitle {{
     line-height: 1.5;
 }}
 
-QPushButton#refreshButton {{
+/* Buttons */
+QPushButton#primaryButton {{
+    background-color: {COLOR_BRAND_PRIMARY};
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 16px;
+    font-weight: 600;
+    font-size: 12px;
+}}
+
+QPushButton#primaryButton:hover {{
+    background-color: {COLOR_BRAND_HOVER};
+}}
+
+QPushButton#secondaryButton {{
     background-color: {COLOR_BG_TERTIARY};
     color: {COLOR_TEXT_PRIMARY};
     border: 1px solid #CBD5E1;
-    border-radius: 4px;
-    padding: 5px 14px;
+    border-radius: 5px;
+    padding: 6px 14px;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 12px;
 }}
 
-QPushButton#refreshButton:hover {{
+QPushButton#secondaryButton:hover {{
     background-color: #E2E8F0;
     border-color: #94A3B8;
 }}
 
-QPushButton#refreshButton:pressed {{
-    background-color: #CBD5E1;
+/* Search Input */
+QLineEdit#searchInput {{
+    background-color: white;
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: {COLOR_TEXT_PRIMARY};
 }}
 
+QLineEdit#searchInput:focus {{
+    border-color: {COLOR_BRAND_PRIMARY};
+}}
+
+/* Tables */
 QHeaderView::section {{
     background-color: {COLOR_BG_TERTIARY};
     color: {COLOR_TEXT_SECONDARY};
