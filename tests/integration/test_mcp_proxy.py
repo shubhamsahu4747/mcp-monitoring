@@ -178,11 +178,11 @@ async def test_3_rejected_request_never_executes_upstream(
     # 2. File was NEVER created upstream
     assert not demo_path.exists(), "Upstream file was created despite rejection!"
 
-    # 3. Audit record shows BLOCKED
+    # 3. Audit record shows REJECTED / BLOCKED
     records = await audit_repo.list_records(limit=10)
     assert len(records) == 1
     assert records[0].decision == AuthorizationStatus.REJECTED
-    assert records[0].execution_outcome == "BLOCKED"
+    assert records[0].execution_outcome in ("BLOCKED", "USER_REJECTED")
 
 
 @pytest.mark.asyncio

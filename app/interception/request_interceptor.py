@@ -13,6 +13,7 @@ from app.gateway.upstream_manager import UpstreamConnectionError, UpstreamManage
 from app.interception.request_parser import RequestParser
 from app.models.requests import (
     AlreadyDispatchedError,
+    AuditOutcome,
     AuditRecord,
     AuthorizationCancelledError,
     AuthorizationStatus,
@@ -105,20 +106,41 @@ class RequestInterceptor:
             reason = auth_request.reason or "Explicitly rejected by user"
             logger.info("Blocked tool execution for %s: %s", clean_name, reason)
 
+            reason_lower = reason.lower()
+            if (
+                "agent is not running" in reason_lower
+                or "unreachable" in reason_lower
+                or "all connection attempts failed" in reason_lower
+            ):
+                outcome = AuditOutcome.BLOCKED_AGENT_UNAVAILABLE
+                error_msg = (
+                    f"Tool execution for '{clean_name}' was blocked: "
+                    f"Walled AI Desktop Agent is unavailable ({reason})"
+                )
+            elif (
+                "agent authentication failed" in reason_lower
+                or "http 401" in reason_lower
+                or "invalid agent token" in reason_lower
+                or "internal authorization error" in reason_lower
+            ):
+                outcome = AuditOutcome.BLOCKED_AUTHORIZATION_ERROR
+                error_msg = (
+                    f"Tool execution for '{clean_name}' was blocked due to authorization error: "
+                    f"{reason}"
+                )
+            else:
+                outcome = AuditOutcome.USER_REJECTED
+                error_msg = f"Tool execution for '{clean_name}' was blocked by user: {reason}"
+
             audit_record = AuditRecord.from_request(
                 auth_request,
-                execution_outcome="BLOCKED",
+                execution_outcome=outcome,
                 failure_reason=reason,
             )
             await self._safe_audit(audit_record)
 
             return types.CallToolResult(
-                content=[
-                    types.TextContent(
-                        type="text",
-                        text=f"Tool execution for '{clean_name}' was blocked by user: {reason}",
-                    )
-                ],
+                content=[types.TextContent(type="text", text=error_msg)],
                 is_error=True,
             )
 

@@ -3,17 +3,21 @@
 Allows local MCP proxies (such as child processes spawned by Claude Desktop)
 to communicate authorization requests to the running desktop UI, triggering
 always-on-top popups, updating the dashboard queue, and returning user decisions.
+Supports HTTP and WebSocket communication with strict bearer token authentication.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
+
+from app.config import settings
 
 if TYPE_CHECKING:
     from app.desktop.application import WalledAIDesktopApp
@@ -57,30 +61,64 @@ class DesktopIPCServer:
         self._serve_task: Optional[asyncio.Task[None]] = None
         self._setup_routes()
 
+    def _verify_token(
+        self,
+        authorization: Optional[str] = None,
+        x_agent_token: Optional[str] = None,
+    ) -> None:
+        """Verify request bearer token or X-Agent-Token header matches configured token."""
+        token = x_agent_token
+        if not token and authorization:
+            if authorization.lower().startswith("bearer "):
+                token = authorization[7:].strip()
+            else:
+                token = authorization.strip()
+
+        expected = settings.agent_auth_token
+        if not token or not secrets.compare_digest(token, expected):
+            logger.warning("Rejected unauthorized IPC request: invalid or missing agent token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Invalid or missing agent authentication token",
+            )
+
     def _setup_routes(self) -> None:
         """Register API routes."""
 
         @self.app.get("/health")
         @self.app.get("/api/status")
-        async def status() -> Dict[str, Any]:
+        async def status_endpoint() -> Dict[str, Any]:
             """Return desktop agent status and pending request count."""
             return {
                 "status": "ok",
                 "service": "walled-ai-desktop-agent",
+                "host": self.host,
+                "port": self.port,
                 "pending_count": self.desktop_app.auth_mgr.registry.count,
                 "timeout_seconds": self.desktop_app.auth_mgr.timeout_seconds,
             }
 
         @self.app.post("/api/authorize", response_model=AuthorizeResponsePayload)
-        async def authorize(payload: AuthorizeRequestPayload) -> AuthorizeResponsePayload:
+        async def authorize(
+            payload: AuthorizeRequestPayload,
+            authorization: Optional[str] = Header(None),
+            x_agent_token: Optional[str] = Header(None),
+        ) -> AuthorizeResponsePayload:
             """Process an authorization request via the Desktop Agent GUI."""
+            self._verify_token(authorization, x_agent_token)
+
+            # Signal to dashboard that MCP Gateway is active
+            if hasattr(self.desktop_app, "main_window"):
+                self.desktop_app.main_window.set_gateway_status(
+                    True, "Running (Active Interception)"
+                )
+
             logger.info(
-                "IPC received authorization request: server='%s', tool='%s'",
+                "IPC received authenticated authorization request: server='%s', tool='%s'",
                 payload.server_name,
                 payload.tool_name,
             )
             try:
-                # Use desktop application to present popup and wait for user decision
                 timeout = payload.timeout_seconds or self.desktop_app.auth_mgr.timeout_seconds
                 decision = await self.desktop_app.request_authorization_via_gui(
                     server_name=payload.server_name,
@@ -103,6 +141,55 @@ class DesktopIPCServer:
             except Exception as e:
                 logger.error("IPC authorization request failed: %s", e)
                 raise HTTPException(status_code=500, detail=str(e)) from e
+
+        @self.app.websocket("/ws/agent")
+        async def websocket_agent(websocket: WebSocket) -> None:
+            """WebSocket endpoint for duplex streaming communication with gateway."""
+            token = websocket.query_params.get("token") or websocket.headers.get("x-agent-token")
+            auth_header = websocket.headers.get("authorization")
+            if not token and auth_header and auth_header.lower().startswith("bearer "):
+                token = auth_header[7:].strip()
+
+            expected = settings.agent_auth_token
+            if not token or not secrets.compare_digest(token, expected):
+                logger.warning("Rejected unauthorized WebSocket connection: invalid token")
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+
+            await websocket.accept()
+            if hasattr(self.desktop_app, "main_window"):
+                self.desktop_app.main_window.set_gateway_status(
+                    True, "Running (WebSocket Connected)"
+                )
+
+            try:
+                while True:
+                    data = await websocket.receive_json()
+                    msg_type = data.get("type", "ping")
+                    if msg_type == "ping":
+                        await websocket.send_json({"type": "pong", "status": "ok"})
+                    elif msg_type == "authorize":
+                        server_name = data.get("server_name", "Unknown")
+                        tool_name = data.get("tool_name", "unknown")
+                        arguments = data.get("arguments", {})
+                        timeout = data.get(
+                            "timeout_seconds",
+                            self.desktop_app.auth_mgr.timeout_seconds,
+                        )
+                        decision = await self.desktop_app.request_authorization_via_gui(
+                            server_name=server_name,
+                            tool_name=tool_name,
+                            arguments=arguments,
+                            timeout_seconds=timeout,
+                        )
+                        await websocket.send_json({
+                            "type": "decision",
+                            "request_id": decision.request_id,
+                            "status": decision.decision.value,
+                            "reason": decision.reason or "",
+                        })
+            except WebSocketDisconnect:
+                logger.info("WebSocket agent client disconnected.")
 
     async def start(self) -> None:
         """Start Uvicorn server in background task."""

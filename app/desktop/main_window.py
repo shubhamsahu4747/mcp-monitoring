@@ -6,7 +6,7 @@ import logging
 from typing import Callable, Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -58,6 +58,11 @@ class MainWindow(QMainWindow):
         self._pending_requests: Dict[str, AuthorizationRequest] = {}
         self._audit_records: List[AuditRecord] = []
 
+        # System health status flags
+        self._gateway_running: bool = False
+        self._agent_connected: bool = False
+        self._upstream_connected: bool = True
+
         self.setWindowTitle("Walled AI – MCP Security Gateway")
         self.setMinimumSize(920, 640)
         self.resize(1020, 720)
@@ -84,7 +89,7 @@ class MainWindow(QMainWindow):
 
         title_layout = QVBoxLayout()
         title_layout.setSpacing(2)
-        title_lbl = QLabel("🛡️ WALLED AI MCP SECURITY GATEWAY")
+        title_lbl = QLabel("WALLED AI MCP SECURITY GATEWAY")
         title_lbl.setStyleSheet(
             f"color: {COLOR_TEXT_LIGHT}; font-weight: 700; font-size: 15px; letter-spacing: 0.5px;"
         )
@@ -96,23 +101,41 @@ class MainWindow(QMainWindow):
 
         header_layout.addStretch()
 
-        # Status Badges
+        # Component Status Indicators
         badge_layout = QHBoxLayout()
         badge_layout.setSpacing(8)
 
-        upstream_badge = QLabel("🔌 Upstream: Safe Mock (stdio)")
-        upstream_badge.setStyleSheet(
+        # 1. MCP Gateway Status
+        self.badge_gateway = QLabel("MCP Gateway: Standby")
+        self.badge_gateway.setStyleSheet(
             "background-color: #1E293B; color: #94A3B8; font-size: 11px; "
-            "font-weight: 500; padding: 4px 10px; border-radius: 12px; border: 1px solid #334155;"
+            "font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155;"
         )
-        badge_layout.addWidget(upstream_badge)
+        badge_layout.addWidget(self.badge_gateway)
 
-        status_pill = QLabel("● GATEWAY ACTIVE")
-        status_pill.setStyleSheet(
-            f"background-color: {COLOR_BADGE_SECURITY}; color: white; "
-            f"font-weight: 700; font-size: 11px; padding: 4px 12px; border-radius: 12px;"
+        # 2. Desktop Agent Status
+        self.badge_agent = QLabel("Desktop Agent: Disconnected")
+        self.badge_agent.setStyleSheet(
+            "background-color: #1E293B; color: #EF4444; font-size: 11px; "
+            "font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155;"
         )
-        badge_layout.addWidget(status_pill)
+        badge_layout.addWidget(self.badge_agent)
+
+        # 3. Upstream MCP Server Status
+        self.badge_upstream = QLabel("Upstream Server: Connected")
+        self.badge_upstream.setStyleSheet(
+            "background-color: #1E293B; color: #10B981; font-size: 11px; "
+            "font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155;"
+        )
+        badge_layout.addWidget(self.badge_upstream)
+
+        # 4. Composite System Status Pill
+        self.system_status_pill = QLabel("SYSTEM NOT READY")
+        self.system_status_pill.setStyleSheet(
+            "background-color: #DC2626; color: white; font-weight: 700; "
+            "font-size: 11px; padding: 4px 12px; border-radius: 6px;"
+        )
+        badge_layout.addWidget(self.system_status_pill)
         header_layout.addLayout(badge_layout)
 
         main_layout.addWidget(header)
@@ -211,7 +234,7 @@ class MainWindow(QMainWindow):
         pending_header.addWidget(self.lbl_queue_count)
         pending_header.addStretch()
 
-        btn_demo_trigger = QPushButton("⚡ Test Authorization Popup")
+        btn_demo_trigger = QPushButton("Test Authorization Dialog")
         btn_demo_trigger.setObjectName("primaryButton")
         btn_demo_trigger.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_demo_trigger.clicked.connect(lambda: self.trigger_demo_requested.emit())
@@ -225,14 +248,6 @@ class MainWindow(QMainWindow):
         empty_layout.setContentsMargins(30, 40, 30, 40)
         empty_layout.setSpacing(12)
         empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        empty_icon = QLabel("🛡️")
-        empty_icon.setStyleSheet(
-            "font-size: 32px; background-color: #CCFBF1; border-radius: 28px; padding: 12px;"
-        )
-        empty_icon.setFixedSize(56, 56)
-        empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_layout.addWidget(empty_icon, alignment=Qt.AlignmentFlag.AlignCenter)
 
         empty_title = QLabel("Security Gateway Active & Monitoring")
         empty_title.setObjectName("emptyStateTitle")
@@ -248,7 +263,7 @@ class MainWindow(QMainWindow):
         empty_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(empty_subtitle)
 
-        btn_empty_demo = QPushButton("⚡ Trigger Demo Tool Request")
+        btn_empty_demo = QPushButton("Trigger Demo Tool Request")
         btn_empty_demo.setObjectName("secondaryButton")
         btn_empty_demo.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_empty_demo.clicked.connect(lambda: self.trigger_demo_requested.emit())
@@ -289,7 +304,7 @@ class MainWindow(QMainWindow):
         self.table_pending.hide()  # Initially hidden until requests arrive
         pending_layout.addWidget(self.table_pending)
 
-        self.tabs.addTab(self.pending_tab, "⚡ Active Requests (0)")
+        self.tabs.addTab(self.pending_tab, "Active Requests (0)")
 
         # Tab 2: Audit History
         self.audit_tab = QWidget()
@@ -311,7 +326,7 @@ class MainWindow(QMainWindow):
         self.search_input.textChanged.connect(self._on_audit_search_changed)
         audit_header.addWidget(self.search_input)
 
-        btn_refresh = QPushButton("↻ Refresh Log")
+        btn_refresh = QPushButton("Refresh Log")
         btn_refresh.setObjectName("secondaryButton")
         btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_refresh.clicked.connect(lambda: self.refresh_audit_requested.emit())
@@ -325,14 +340,6 @@ class MainWindow(QMainWindow):
         audit_empty_layout.setContentsMargins(30, 40, 30, 40)
         audit_empty_layout.setSpacing(12)
         audit_empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        audit_empty_icon = QLabel("📋")
-        audit_empty_icon.setStyleSheet(
-            "font-size: 32px; background-color: #F1F5F9; border-radius: 28px; padding: 12px;"
-        )
-        audit_empty_icon.setFixedSize(56, 56)
-        audit_empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        audit_empty_layout.addWidget(audit_empty_icon, alignment=Qt.AlignmentFlag.AlignCenter)
 
         audit_empty_title = QLabel("No Audit Records Found")
         audit_empty_title.setObjectName("emptyStateTitle")
@@ -376,7 +383,7 @@ class MainWindow(QMainWindow):
         self.table_audit.hide()  # Initially hidden until records arrive
         audit_layout.addWidget(self.table_audit)
 
-        self.tabs.addTab(self.audit_tab, "📋 Audit History")
+        self.tabs.addTab(self.audit_tab, "Audit History")
         main_layout.addWidget(self.tabs)
 
         # 4. Status Bar
@@ -472,6 +479,64 @@ class MainWindow(QMainWindow):
                 self.request_inspect_requested.emit(request_id)
 
     # -------------------------------------------------------------------------
+    # Component Status Updates
+    # -------------------------------------------------------------------------
+
+    def set_gateway_status(self, running: bool, label: Optional[str] = None) -> None:
+        """Update MCP Gateway running status indicator."""
+        self._gateway_running = running
+        text = label or ("MCP Gateway: Running" if running else "MCP Gateway: Stopped")
+        color = "#10B981" if running else "#EF4444"
+        self.badge_gateway.setText(text)
+        self.badge_gateway.setStyleSheet(
+            f"background-color: #1E293B; color: {color}; font-size: 11px; "
+            f"font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155;"
+        )
+        self._update_system_status()
+
+    def set_agent_status(self, connected: bool, label: Optional[str] = None) -> None:
+        """Update Desktop Agent connection status indicator."""
+        self._agent_connected = connected
+        text = label or ("Desktop Agent: Connected" if connected else "Desktop Agent: Disconnected")
+        color = "#10B981" if connected else "#EF4444"
+        self.badge_agent.setText(text)
+        self.badge_agent.setStyleSheet(
+            f"background-color: #1E293B; color: {color}; font-size: 11px; "
+            f"font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155;"
+        )
+        self._update_system_status()
+
+    def set_upstream_status(self, connected: bool, label: Optional[str] = None) -> None:
+        """Update Upstream MCP Server status indicator."""
+        self._upstream_connected = connected
+        text = label or ("Upstream: Connected" if connected else "Upstream: Disconnected")
+        color = "#10B981" if connected else "#EF4444"
+        self.badge_upstream.setText(text)
+        self.badge_upstream.setStyleSheet(
+            f"background-color: #1E293B; color: {color}; font-size: 11px; "
+            f"font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155;"
+        )
+        self._update_system_status()
+
+    def _update_system_status(self) -> None:
+        """Update composite system health indicator.
+
+        Only operational if all required components are available.
+        """
+        if self._agent_connected and self._upstream_connected and self._gateway_running:
+            self.system_status_pill.setText("SYSTEM OPERATIONAL (FAIL-CLOSED)")
+            self.system_status_pill.setStyleSheet(
+                f"background-color: {COLOR_BADGE_SECURITY}; color: white; font-weight: 700; "
+                f"font-size: 11px; padding: 4px 12px; border-radius: 6px;"
+            )
+        else:
+            self.system_status_pill.setText("SYSTEM DEGRADED (NOT READY)")
+            self.system_status_pill.setStyleSheet(
+                "background-color: #DC2626; color: white; font-weight: 700; "
+                "font-size: 11px; padding: 4px 12px; border-radius: 6px;"
+            )
+
+    # -------------------------------------------------------------------------
     # Audit Table Population & Filtering
     # -------------------------------------------------------------------------
 
@@ -533,11 +598,24 @@ class MainWindow(QMainWindow):
                 decision_item.setForeground(Qt.GlobalColor.gray)
             self.table_audit.setItem(row, 3, decision_item)
 
-            # Execution Outcome
-            outcome_text = rec.execution_outcome or ""
-            if rec.failure_reason:
-                outcome_text = f"{outcome_text}: {rec.failure_reason}"
-            self.table_audit.setItem(row, 4, QTableWidgetItem(outcome_text))
+            # Categorized Outcome
+            outcome_category = rec.categorized_outcome
+            outcome_text = outcome_category
+            if rec.failure_reason and outcome_category != "USER_APPROVED":
+                outcome_text = f"{outcome_category} ({rec.failure_reason})"
+
+            outcome_item = QTableWidgetItem(outcome_text)
+            if outcome_category == "USER_APPROVED":
+                outcome_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif outcome_category == "USER_REJECTED":
+                outcome_item.setForeground(Qt.GlobalColor.red)
+            elif outcome_category == "BLOCKED_AGENT_UNAVAILABLE":
+                outcome_item.setForeground(QColor("#D97706"))
+            elif outcome_category == "BLOCKED_TIMEOUT":
+                outcome_item.setForeground(QColor("#CA8A04"))
+            else:
+                outcome_item.setForeground(QColor("#991B1B"))
+            self.table_audit.setItem(row, 4, outcome_item)
 
             # Request ID
             self.table_audit.setItem(row, 5, QTableWidgetItem(rec.request_id[:8] + "..."))

@@ -75,7 +75,7 @@ class SystemTrayManager:
         self.menu = QMenu()
 
         # Branding / Status Title Header
-        self.action_title = QAction("🛡️ Walled AI Security Gateway", self.menu)
+        self.action_title = QAction("Walled AI Security Gateway", self.menu)
         self.action_title.setEnabled(False)
         self.menu.addAction(self.action_title)
 

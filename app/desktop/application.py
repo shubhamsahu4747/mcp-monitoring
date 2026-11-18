@@ -295,11 +295,24 @@ class WalledAIDesktopApp:
 
         # Start IPC server for local MCP proxies (Claude Desktop integration)
         await self.ipc_server.start()
+
+        # Update UI Component Status Indicators
+        self.main_window.set_agent_status(
+            True, f"Desktop Agent: Connected (Port {self.ipc_server.port})"
+        )
+        self.main_window.set_upstream_status(
+            True, f"Upstream: Connected ({settings.upstream_server_name})"
+        )
+        self.main_window.set_gateway_status(True, "MCP Gateway: Standby (Ready)")
         logger.info("Walled AI Desktop Application started successfully.")
 
     async def shutdown(self, quit_qt_app: bool = True) -> None:
         """Gracefully shut down application, cancel pending requests, and close UI."""
         logger.info("Initiating Walled AI Desktop Application shutdown...")
+
+        # Update status indicators to offline
+        self.main_window.set_agent_status(False, "Desktop Agent: Disconnected")
+        self.main_window.set_gateway_status(False, "MCP Gateway: Stopped")
 
         # 0. Stop IPC server
         await self.ipc_server.stop()

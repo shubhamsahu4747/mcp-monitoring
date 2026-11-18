@@ -124,7 +124,8 @@ async def test_end_to_end_desktop_approval_flow(
     records = await audit_repo.list_records(limit=10)
     assert len(records) == 1
     assert records[0].decision == AuthorizationStatus.APPROVED
-    assert records[0].execution_outcome == "SUCCESS"
+    assert records[0].execution_outcome in ("SUCCESS", "USER_APPROVED")
+    assert records[0].categorized_outcome == "USER_APPROVED"
 
 
 @pytest.mark.asyncio
@@ -157,4 +158,5 @@ async def test_end_to_end_desktop_rejection_flow(
     records = await audit_repo.list_records(limit=10)
     assert len(records) == 1
     assert records[0].decision == AuthorizationStatus.REJECTED
-    assert records[0].execution_outcome == "BLOCKED"
+    assert records[0].execution_outcome in ("BLOCKED", "USER_REJECTED")
+    assert records[0].categorized_outcome == "USER_REJECTED"

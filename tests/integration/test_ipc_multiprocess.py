@@ -145,3 +145,40 @@ async def test_ipc_fails_closed_when_desktop_agent_offline() -> None:
     decision = await client.request_authorization(req)
     assert decision.decision == AuthorizationStatus.REJECTED
     assert "not running" in (decision.reason or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_ipc_token_authentication_rejection(ipc_env: Dict[str, Any]) -> None:
+    """Verify that requests with an invalid agent token are rejected with 401."""
+    client = IPCAuthorizationClient(
+        host="127.0.0.1",
+        port=8799,
+        auth_token="invalid-unauthorized-token",
+        timeout_seconds=2.0,
+    )
+    req = AuthorizationRequest(
+        server_name="Safe Mock MCP Server",
+        tool_name="calculate_sum",
+        arguments={"a": 10, "b": 20},
+    )
+    decision = await client.request_authorization(req)
+    assert decision.decision == AuthorizationStatus.REJECTED
+    assert "authentication failed" in (decision.reason or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_ipc_websocket_communication(ipc_env: Dict[str, Any]) -> None:
+    """Verify WebSocket communication with desktop agent using valid token."""
+    import json
+
+    import websockets
+
+    from app.config import settings
+
+    ws_url = f"ws://127.0.0.1:8799/ws/agent?token={settings.agent_auth_token}"
+    async with websockets.connect(ws_url) as ws:
+        # Send ping
+        await ws.send(json.dumps({"type": "ping"}))
+        response = json.loads(await ws.recv())
+        assert response.get("type") == "pong"
+        assert response.get("status") == "ok"

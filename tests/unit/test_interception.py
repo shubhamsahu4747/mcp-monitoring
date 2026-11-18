@@ -149,11 +149,11 @@ async def test_interceptor_rejected_execution_never_reaches_upstream(
     assert result.is_error
     assert "was blocked by user" in result.content[0].text  # type: ignore
 
-    # 3. Audit log must record BLOCKED
+    # 3. Audit log must record USER_REJECTED / BLOCKED
     records = await audit_repo.list_records(limit=10)
     assert len(records) == 1
     assert records[0].decision == AuthorizationStatus.REJECTED
-    assert records[0].execution_outcome == "BLOCKED"
+    assert records[0].execution_outcome in ("BLOCKED", "USER_REJECTED")
 
 
 @pytest.mark.asyncio

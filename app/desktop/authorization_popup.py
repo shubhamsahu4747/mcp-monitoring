@@ -86,7 +86,7 @@ class AuthorizationPopup(QDialog):
         header_layout.setSpacing(6)
 
         header_top = QHBoxLayout()
-        brand_label = QLabel("🛡️ WALLED AI SECURITY GATEWAY")
+        brand_label = QLabel("WALLED AI SECURITY GATEWAY")
         brand_label.setObjectName("brandTitle")
         header_top.addWidget(brand_label)
 
@@ -170,7 +170,7 @@ class AuthorizationPopup(QDialog):
         args_header_layout.addWidget(lbl_args)
         args_header_layout.addStretch()
 
-        lbl_redact_notice = QLabel("🔒 Sensitive secrets masked")
+        lbl_redact_notice = QLabel("Sensitive parameters redacted")
         lbl_redact_notice.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; font-size: 11px;")
         args_header_layout.addWidget(lbl_redact_notice)
         layout.addLayout(args_header_layout)
@@ -210,13 +210,13 @@ class AuthorizationPopup(QDialog):
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(12)
 
-        self.btn_reject = QPushButton("✕ Block & Reject")
+        self.btn_reject = QPushButton("Reject Request")
         self.btn_reject.setObjectName("rejectButton")
         self.btn_reject.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_reject.clicked.connect(self._on_reject_clicked)
         buttons_layout.addWidget(self.btn_reject)
 
-        self.btn_approve = QPushButton("✓ Allow & Forward")
+        self.btn_approve = QPushButton("Approve & Execute")
         self.btn_approve.setObjectName("approveButton")
         self.btn_approve.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_approve.setDefault(True)

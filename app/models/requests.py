@@ -25,6 +25,19 @@ class AuthorizationStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class AuditOutcome(StrEnum):
+    """Categorized audit record outcomes for distinguishing user actions from system events."""
+
+    USER_APPROVED = "USER_APPROVED"
+    USER_REJECTED = "USER_REJECTED"
+    BLOCKED_AGENT_UNAVAILABLE = "BLOCKED_AGENT_UNAVAILABLE"
+    BLOCKED_TIMEOUT = "BLOCKED_TIMEOUT"
+    BLOCKED_AUTHORIZATION_ERROR = "BLOCKED_AUTHORIZATION_ERROR"
+    SUCCESS = "SUCCESS"
+    TOOL_ERROR = "TOOL_ERROR"
+    UPSTREAM_FAILURE = "UPSTREAM_FAILURE"
+
+
 # Terminal states from which no further transition is permitted
 TERMINAL_STATUSES: frozenset[AuthorizationStatus] = frozenset(
     {
@@ -291,6 +304,33 @@ class AuditRecord(BaseModel):
     execution_outcome: Optional[str] = None
     failure_reason: Optional[str] = None
     arguments_redacted: Dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def categorized_outcome(self) -> str:
+        """Return the normalized outcome category for UI and reporting."""
+        if self.execution_outcome in (
+            AuditOutcome.USER_APPROVED,
+            AuditOutcome.USER_REJECTED,
+            AuditOutcome.BLOCKED_AGENT_UNAVAILABLE,
+            AuditOutcome.BLOCKED_TIMEOUT,
+            AuditOutcome.BLOCKED_AUTHORIZATION_ERROR,
+        ):
+            return self.execution_outcome
+
+        # Map legacy / existing outcome strings
+        if self.decision == AuthorizationStatus.APPROVED:
+            return AuditOutcome.USER_APPROVED
+        elif self.decision == AuthorizationStatus.TIMED_OUT:
+            return AuditOutcome.BLOCKED_TIMEOUT
+        elif self.decision == AuthorizationStatus.REJECTED:
+            reason_lower = (self.failure_reason or "").lower()
+            is_offline = "not running" in reason_lower or "unreachable" in reason_lower
+            if "agent" in reason_lower and is_offline:
+                return AuditOutcome.BLOCKED_AGENT_UNAVAILABLE
+            if "error" in reason_lower or "unauthorized" in reason_lower or "token" in reason_lower:
+                return AuditOutcome.BLOCKED_AUTHORIZATION_ERROR
+            return AuditOutcome.USER_REJECTED
+        return AuditOutcome.BLOCKED_AUTHORIZATION_ERROR
 
     @field_validator("decision")
     @classmethod

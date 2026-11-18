@@ -1,7 +1,8 @@
 """IPC Authorization Client connecting LocalMCPProxy to WalledAIDesktopApp.
 
 When Claude Desktop invokes tools via local-proxy stdio, this client forwards
-the authorization request to the running desktop UI over local loopback HTTP (127.0.0.1:8765).
+the authorization request to the running desktop UI over local loopback HTTP (127.0.0.1:8765)
+with bearer token authentication.
 If the desktop agent is not running, it enforces fail-closed security.
 """
 
@@ -33,20 +34,32 @@ class IPCAuthorizationClient:
         self,
         host: str = "127.0.0.1",
         port: int = 8765,
+        auth_token: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
         allow_inprocess_fallback: bool = False,
     ) -> None:
         self.host = host
         self.port = port
+        self.auth_token = auth_token or settings.agent_auth_token
         self.timeout_seconds = timeout_seconds or settings.auth_timeout_seconds
         self.allow_inprocess_fallback = allow_inprocess_fallback
         self.base_url = f"http://{self.host}:{self.port}"
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Return authentication headers including bearer token."""
+        return {
+            "Authorization": f"Bearer {self.auth_token}",
+            "X-Agent-Token": self.auth_token,
+        }
 
     async def check_health(self) -> bool:
         """Check if desktop agent IPC server is responsive."""
         try:
             async with httpx.AsyncClient(timeout=1.0) as client:
-                resp = await client.get(f"{self.base_url}/health")
+                resp = await client.get(
+                    f"{self.base_url}/health",
+                    headers=self._get_headers(),
+                )
                 return resp.status_code == 200
         except Exception:
             return False
@@ -84,6 +97,7 @@ class IPCAuthorizationClient:
                 response = await client.post(
                     f"{self.base_url}/api/authorize",
                     json=payload,
+                    headers=self._get_headers(),
                 )
                 response.raise_for_status()
                 data: Dict[str, Any] = response.json()
@@ -121,6 +135,23 @@ class IPCAuthorizationClient:
                     "Start the desktop authorization agent ('python -m app.main desktop') "
                     "to review and approve tool calls."
                 ),
+            )
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code == 401:
+                logger.error("Desktop Agent rejected IPC connection: Unauthorized token mismatch")
+                return AuthorizationDecision(
+                    request_id=request.request_id,
+                    decision=AuthorizationStatus.REJECTED,
+                    reason=(
+                        "Agent authentication failed: Invalid or missing agent bearer token "
+                        "(HTTP 401 Unauthorized)"
+                    ),
+                )
+            logger.error("Desktop Agent returned HTTP error %d: %s", err.response.status_code, err)
+            return AuthorizationDecision(
+                request_id=request.request_id,
+                decision=AuthorizationStatus.REJECTED,
+                reason=f"Desktop Agent returned HTTP error {err.response.status_code}",
             )
         except httpx.TimeoutException:
             logger.warning("Desktop Agent authorization request timed out.")
