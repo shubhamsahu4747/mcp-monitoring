@@ -65,8 +65,8 @@ flowchart TD
         ProdServers["Third-Party MCP Servers (Filesystem, DB, Shell)"]
     end
 
-    CD -->|stdio JSON-RPC (Unbuffered)| LocalProxy
-    CW -->|HTTPS POST /mcp (Bearer API Key)| RemoteGateway
+    CD -->|"stdio JSON-RPC (Unbuffered)"| LocalProxy
+    CW -->|"HTTPS POST /mcp (Bearer API Key)"| RemoteGateway
 
     LocalProxy --> Interceptor
     RemoteGateway --> RateLimit
@@ -75,15 +75,15 @@ flowchart TD
     Interceptor --> AuthManager
     AuthManager --> Registry
 
-    LocalProxy -.->|Local IPC (Port 8765)| DesktopApp
-    WSBroker <-->|Authenticated Reverse WebSocket| DesktopApp
+    LocalProxy -.->|"Local IPC (Port 8765)"| DesktopApp
+    WSBroker ---|"Authenticated Reverse WebSocket"| DesktopApp
 
     DesktopApp --> Popup
     DesktopApp --> Tray
-    Popup -->|Human Decision| DesktopApp
+    Popup -->|"Human Decision"| DesktopApp
 
-    AuthManager -->|Record Outcome| AuditDB
-    Interceptor -->|Approved Tool Calls Only (At-Most-Once)| UpstreamBoundary
+    AuthManager -->|"Record Outcome"| AuditDB
+    Interceptor -->|"Approved Tool Calls Only (At-Most-Once)"| UpstreamBoundary
     UpstreamBoundary --> MockServer
     UpstreamBoundary --> ProdServers
 ```
@@ -123,26 +123,26 @@ sequenceDiagram
     participant Client as Remote Client (Claude Web)
     participant Upstream as Upstream MCP Server
 
-    Agent->>Gateway: Outbound WebSocket Connect: /ws/agent?token=<AGENT_AUTH_TOKEN>
+    Agent->>Gateway: Outbound WebSocket Connect: /ws/agent (Bearer Token)
     Gateway-->>Agent: Handshake Accepted (Agent Registered)
 
     Client->>Gateway: POST /mcp (tools/call calculate_sum)
-    Note over Gateway: Intercepted: Execution paused.
+    Note over Gateway: Intercepted: Execution paused
     
-    Gateway->>Agent: WS Frame: {"type": "authorize", "request_id": "...", "arguments": {...}}
+    Gateway->>Agent: WS Frame: authorize request (request_id, arguments)
     Agent->>User: Display Always-On-Top Popup (Redacted Preview)
 
     alt Explicit User Approval
-        User->>Agent: Click "Approve & Execute"
-        Agent->>Gateway: WS Frame: {"type": "decision", "status": "APPROVED"}
+        User->>Agent: Click Approve & Execute
+        Agent->>Gateway: WS Frame: decision APPROVED
         Gateway->>Upstream: Single Dispatch: call_tool(calculate_sum)
         Upstream-->>Gateway: Result (100.0)
-        Gateway->>Client: SSE Frame: result: 100.0
+        Gateway->>Client: SSE Frame: result 100.0
     else Explicit User Rejection / Dismissal / Timeout / Drop
-        User->>Agent: Click "Reject" / Close Dialog / Timeout Expires
-        Agent->>Gateway: WS Frame: {"type": "decision", "status": "REJECTED"}
+        User->>Agent: Click Reject / Close Dialog / Timeout Expires
+        Agent->>Gateway: WS Frame: decision REJECTED
         Note over Gateway: Upstream server is NEVER contacted (0 calls)
-        Gateway->>Client: SSE Frame: isError: true ("Blocked by user")
+        Gateway->>Client: SSE Frame: error (Blocked by user)
     end
 ```
 
@@ -155,17 +155,17 @@ Every intercepted tool call is governed by a strict, concurrency-safe state mach
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING: Tool Intercepted
-    PENDING --> APPROVED: User clicks "Approve & Execute"
-    PENDING --> REJECTED: User clicks "Reject Request"
-    PENDING --> REJECTED: Popup closed without decision (USER_DISMISSED)
-    PENDING --> TIMED_OUT: Deadline expires (Fail-Closed)
-    PENDING --> CANCELLED: Gateway or Agent shuts down
+    PENDING --> APPROVED: User approves
+    PENDING --> REJECTED: User rejects
+    PENDING --> REJECTED: Popup dismissed
+    PENDING --> TIMED_OUT: Timeout expires fail-closed
+    PENDING --> CANCELLED: Gateway or Agent shutdown
 
-    APPROVED --> DISPATCHED: Exactly-Once Forward to Upstream
-    DISPATCHED --> [*]: Upstream Execution Finished
-    REJECTED --> [*]: Blocked (0 Upstream Executions)
-    TIMED_OUT --> [*]: Blocked (0 Upstream Executions)
-    CANCELLED --> [*]: Blocked (0 Upstream Executions)
+    APPROVED --> DISPATCHED: Exactly-once upstream dispatch
+    DISPATCHED --> [*]: Upstream execution finished
+    REJECTED --> [*]: Blocked 0 upstream executions
+    TIMED_OUT --> [*]: Blocked 0 upstream executions
+    CANCELLED --> [*]: Blocked 0 upstream executions
 ```
 
 ### Categorized Audit Outcomes

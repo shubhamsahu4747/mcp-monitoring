@@ -117,15 +117,19 @@ class WalledAIDesktopApp:
         timeout_seconds: float,
         client_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> AuthorizationDecision:
         """Present authorization request in desktop UI and wait for user decision."""
-        req = AuthorizationRequest(
-            server_name=server_name,
-            tool_name=tool_name,
-            arguments=arguments,
-            client_id=client_id,
-            session_id=session_id,
-        )
+        kwargs: Dict[str, Any] = {
+            "server_name": server_name,
+            "tool_name": tool_name,
+            "arguments": arguments,
+            "client_id": client_id,
+            "session_id": session_id,
+        }
+        if request_id:
+            kwargs["request_id"] = request_id
+        req = AuthorizationRequest(**kwargs)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[AuthorizationDecision] = loop.create_future()
         await self.auth_mgr.registry.register(req, future)

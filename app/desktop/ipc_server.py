@@ -172,6 +172,7 @@ class DesktopIPCServer:
                         server_name = data.get("server_name", "Unknown")
                         tool_name = data.get("tool_name", "unknown")
                         arguments = data.get("arguments", {})
+                        request_id = data.get("request_id")
                         timeout = data.get(
                             "timeout_seconds",
                             self.desktop_app.auth_mgr.timeout_seconds,
@@ -181,6 +182,7 @@ class DesktopIPCServer:
                             tool_name=tool_name,
                             arguments=arguments,
                             timeout_seconds=timeout,
+                            request_id=request_id,
                         )
                         await websocket.send_json({
                             "type": "decision",
@@ -192,7 +194,27 @@ class DesktopIPCServer:
                 logger.info("WebSocket agent client disconnected.")
 
     async def start(self) -> None:
-        """Start Uvicorn server in background task."""
+        """Start Uvicorn server in background task with automatic port collision fallback."""
+        import socket
+
+        target_port = self.port
+        for p in range(self.port, self.port + 20):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind((self.host, p))
+                    target_port = p
+                    break
+                except OSError:
+                    continue
+
+        if target_port != self.port:
+            logger.warning(
+                "Port %d occupied; Desktop IPC server binding to available port %d",
+                self.port,
+                target_port,
+            )
+        self.port = target_port
+
         config = uvicorn.Config(
             self.app,
             host=self.host,

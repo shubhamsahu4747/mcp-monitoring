@@ -212,10 +212,11 @@ class RemoteAgentWebSocketClient:
                 timeout_seconds=timeout_seconds,
                 client_id=client_id,
                 session_id=session_id,
+                request_id=request_id,
             )
             response_payload = {
                 "type": "decision",
-                "request_id": decision.request_id,
+                "request_id": request_id,
                 "status": decision.decision.value,
                 "reason": decision.reason,
             }
@@ -226,5 +227,12 @@ class RemoteAgentWebSocketClient:
             )
             async with self._send_lock:
                 await ws.send(json.dumps(response_payload))
+
+            # Automatically refresh audit logs shortly after upstream execution finishes
+            async def _delayed_refresh() -> None:
+                await asyncio.sleep(0.5)
+                await self.desktop_app.refresh_audit_log()
+
+            asyncio.create_task(_delayed_refresh())
         except Exception as e:
             logger.error("Error processing remote authorization request %s: %s", request_id, e)

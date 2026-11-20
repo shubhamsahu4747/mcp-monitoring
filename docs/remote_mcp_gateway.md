@@ -24,17 +24,17 @@ flowchart TD
         AuditDB[("SQLite Audit Repository")]
     end
 
-    ClaudeWeb -->|POST /mcp (Bearer API Key)| StreamableTransport
-    StreamableTransport -->|Intercept Tools/Call| Gateway
-    Gateway -->|Route Authorization Request| WSBroker
-    WSBroker <-->|Bidirectional Authenticated WebSocket| DesktopAgent
-    DesktopAgent -->|Display Popup & Redacted Arguments| Popup
-    Popup -->|Human Decision (Approve / Reject)| DesktopAgent
-    DesktopAgent -->|Decision (APPROVED / REJECTED)| WSBroker
-    WSBroker -->|Apply Decision & Enforce Single Dispatch| Gateway
-    Gateway -->|Execute Approved Call Only| UpstreamMCP
-    Gateway -->|Persist Audit Record| AuditDB
-    Gateway -->|Stream Result (SSE / JSON-RPC)| ClaudeWeb
+    ClaudeWeb -->|"POST /mcp (Bearer API Key)"| StreamableTransport
+    StreamableTransport -->|"Intercept Tools/Call"| Gateway
+    Gateway -->|"Route Authorization Request"| WSBroker
+    WSBroker ---|"Bidirectional Authenticated WebSocket"| DesktopAgent
+    DesktopAgent -->|"Display Popup & Redacted Arguments"| Popup
+    Popup -->|"Human Decision (Approve / Reject)"| DesktopAgent
+    DesktopAgent -->|"Decision (APPROVED / REJECTED)"| WSBroker
+    WSBroker -->|"Apply Decision & Enforce Single Dispatch"| Gateway
+    Gateway -->|"Execute Approved Call Only"| UpstreamMCP
+    Gateway -->|"Persist Audit Record"| AuditDB
+    Gateway -->|"Stream Result (SSE / JSON-RPC)"| ClaudeWeb
 ```
 
 ### Key Security Invariants
@@ -116,26 +116,26 @@ sequenceDiagram
     participant Claude as Claude Web (Remote Client)
     participant Upstream as Upstream MCP Server
 
-    Desktop->>Gateway: Connect WebSocket /ws/agent?token=<AGENT_TOKEN>
+    Desktop->>Gateway: Connect WebSocket /ws/agent (Bearer Token)
     Gateway-->>Desktop: WebSocket Accepted (Registered)
 
-    Claude->>Gateway: POST /mcp tools/call (Bearer <CLIENT_KEY>)
+    Claude->>Gateway: POST /mcp tools/call (Bearer Key)
     Note over Gateway: Interceptor pauses execution & creates PendingRequest
 
-    Gateway->>Desktop: WS Message: {"type": "authorize", "request_id": "...", "tool_name": "..."}
+    Gateway->>Desktop: WS Message: authorize request (request_id, tool_name)
     Desktop->>User: Display Always-On-Top Popup Dialog (Redacted Args)
     
     alt User Approves
-        User->>Desktop: Click "Approve & Execute"
-        Desktop->>Gateway: WS Message: {"type": "decision", "status": "APPROVED"}
+        User->>Desktop: Click Approve & Execute
+        Desktop->>Gateway: WS Message: decision APPROVED
         Gateway->>Upstream: Execute tool once with original arguments
         Upstream-->>Gateway: Result (100.0)
-        Gateway->>Claude: SSE Response: result: 100.0
+        Gateway->>Claude: SSE Response: result 100.0
     else User Rejects or Timeout or Disconnect
-        User->>Desktop: Click "Reject Request" (or deadline expires)
-        Desktop->>Gateway: WS Message: {"type": "decision", "status": "REJECTED"}
+        User->>Desktop: Click Reject Request (or deadline expires)
+        Desktop->>Gateway: WS Message: decision REJECTED
         Note over Gateway: Zero Upstream Executions
-        Gateway->>Claude: SSE Response: isError: true ("Blocked by user")
+        Gateway->>Claude: SSE Response: error (Blocked by user)
     end
 ```
 
